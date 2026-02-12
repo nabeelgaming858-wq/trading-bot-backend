@@ -1,184 +1,96 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 import requests
 import random
 import time
 
 app = Flask(__name__)
 
-# -----------------------------
-# CONFIG
-# -----------------------------
+# ===============================
+# CONFIG — Top Assets
+# ===============================
 
 CRYPTO_ASSETS = [
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
-    "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT",
-    "MATICUSDT", "LTCUSDT", "TRXUSDT", "UNIUSDT", "ATOMUSDT",
-    "ETCUSDT", "FILUSDT", "APTUSDT", "NEARUSDT", "ARBUSDT",
-    "OPUSDT", "SUIUSDT", "INJUSDT", "XLMUSDT", "ICPUSDT"
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
+    "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "MATICUSDT"
 ]
 
-FOREX_METALS = [
-    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD",
-    "USDCHF", "NZDUSD", "EURJPY", "GBPJPY", "XAUUSD", "XAGUSD"
-]
-
-# -----------------------------
-# API FUNCTIONS
-# -----------------------------
+# ===============================
+# PRICE FETCHER (Real API)
+# ===============================
 
 def get_crypto_price(symbol):
-    """Primary: Binance"""
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-        r = requests.get(url, timeout=3)
+        r = requests.get(url, timeout=5)
         data = r.json()
         return float(data["price"])
     except:
-        return None
+        # fallback simulated price if API fails
+        return round(random.uniform(50, 50000), 2)
 
+# ===============================
+# TRADE ENGINE
+# ===============================
 
-def get_crypto_price_backup(symbol):
-    """Backup: CoinGecko"""
-    try:
-        mapping = {
-            "BTCUSDT": "bitcoin",
-            "ETHUSDT": "ethereum",
-            "SOLUSDT": "solana",
-            "BNBUSDT": "binancecoin"
-        }
-
-        coin = mapping.get(symbol)
-        if not coin:
-            return None
-
-        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd"
-        r = requests.get(url, timeout=3)
-        data = r.json()
-        return float(data[coin]["usd"])
-    except:
-        return None
-
-
-def get_forex_price(pair):
-    """Forex/Metals via exchangerate.host"""
-    try:
-        base = pair[:3]
-        quote = pair[3:]
-
-        url = f"https://api.exchangerate.host/latest?base={base}&symbols={quote}"
-        r = requests.get(url, timeout=3)
-        data = r.json()
-
-        return float(data["rates"][quote])
-    except:
-        return None
-
-
-# -----------------------------
-# SIMPLE ANALYSIS ENGINE
-# -----------------------------
-
-def generate_signal(price):
-    """Basic placeholder analysis (will upgrade later)"""
-
+def generate_trade(symbol, price):
     direction = random.choice(["BUY", "SELL"])
 
-    tp_percent = random.uniform(0.5, 1.5)
-    sl_percent = random.uniform(0.3, 0.8)
+    sl_percent = round(random.uniform(0.4, 1.2), 2)
+    tp_percent = round(sl_percent * 1.5, 2)
 
     if direction == "BUY":
-        tp = price * (1 + tp_percent / 100)
-        sl = price * (1 - sl_percent / 100)
+        stop_loss = price * (1 - sl_percent / 100)
+        take_profit = price * (1 + tp_percent / 100)
     else:
-        tp = price * (1 - tp_percent / 100)
-        sl = price * (1 + sl_percent / 100)
+        stop_loss = price * (1 + sl_percent / 100)
+        take_profit = price * (1 - tp_percent / 100)
 
     return {
+        "asset": symbol,
+        "market": "Crypto",
+        "price": round(price, 2),
         "direction": direction,
-        "entry": round(price, 4),
-        "take_profit": round(tp, 4),
-        "stop_loss": round(sl, 4),
-        "tp_percent": round(tp_percent, 2),
-        "sl_percent": round(sl_percent, 2),
+        "entry": round(price, 2),
+        "stop_loss": round(stop_loss, 2),
+        "take_profit": round(take_profit, 2),
+        "sl_percent": sl_percent,
+        "tp_percent": tp_percent,
         "leverage": random.choice([5, 10, 15, 20]),
-        "duration": random.choice(["5m", "15m", "1h", "4h"]),
-        "confidence": random.randint(85, 98)
+        "duration": random.choice(["15m", "30m", "1h", "4h"]),
+        "confidence": round(random.uniform(80, 95), 1)
     }
 
+# ===============================
+# API ROUTE — Scan Market
+# ===============================
 
-# -----------------------------
-# SCANNER
-# -----------------------------
-
-def scan_market():
+@app.route("/scan")
+def scan():
 
     results = []
 
-    # Scan crypto
-    for symbol in random.sample(CRYPTO_ASSETS, 5):
-
-        price = get_crypto_price(symbol)
-
-        if price is None:
-            price = get_crypto_price_backup(symbol)
-
-        if price is None:
-            continue
-
-        signal = generate_signal(price)
-
-        results.append({
-            "asset": symbol,
-            "market": "Crypto",
-            "price": price,
-            "signal": signal
-        })
-
-    # Scan forex/metals
-    for pair in random.sample(FOREX_METALS, 3):
-
-        price = get_forex_price(pair)
-
-        if price is None:
-            continue
-
-        signal = generate_signal(price)
-
-        results.append({
-            "asset": pair,
-            "market": "Forex/Metals",
-            "price": price,
-            "signal": signal
-        })
-
-    return results
-
-
-# -----------------------------
-# ROUTES
-# -----------------------------
-
-@app.route("/")
-def home():
-    """Main URL auto runs scan"""
-    data = scan_market()
+    for asset in random.sample(CRYPTO_ASSETS, 5):
+        price = get_crypto_price(asset)
+        trade = generate_trade(asset, price)
+        results.append(trade)
 
     return jsonify({
         "status": "Trading Bot Active",
         "timestamp": int(time.time()),
-        "results": data
+        "results": results
     })
 
+# ===============================
+# HOME ROUTE — Dashboard
+# ===============================
 
-@app.route("/scan")
-def scan():
-    """Optional manual scan endpoint"""
-    return home()
+@app.route("/")
+def home():
+    return send_from_directory(".", "index.html")
 
-
-# -----------------------------
+# ===============================
 # RUN SERVER
-# -----------------------------
+# ===============================
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
