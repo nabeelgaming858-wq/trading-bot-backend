@@ -1,89 +1,67 @@
-<!DOCTYPE html>
-<html lang="en">
+  <!DOCTYPE html>
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Bot Dashboard</title>
+    <title>Trading Bot Dashboard</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: linear-gradient(135deg,#0f172a,#1e293b);
+            color: white;
+            text-align: center;
+            padding: 40px;
+        }
 
-<style>
-body {
-  font-family: Arial, sans-serif;
-  background: #0f172a;
-  color: white;
-  margin: 0;
-  padding: 20px;
-}
+        h1 {
+            margin-bottom: 30px;
+        }
 
-h1 {
-  text-align: center;
-  margin-bottom: 20px;
-}
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            background: #22c55e;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
 
-button {
-  background: #22c55e;
-  border: none;
-  padding: 12px 20px;
-  font-size: 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 20px;
-}
+        button:hover {
+            background: #16a34a;
+        }
 
-.card {
-  background: #1e293b;
-  padding: 15px;
-  margin: 10px 0;
-  border-radius: 10px;
-}
-
-.price {
-  font-size: 18px;
-  font-weight: bold;
-}
-</style>
-
+        #results {
+            margin-top: 40px;
+            text-align: left;
+            background: #111827;
+            padding: 20px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+        }
+    </style>
 </head>
+
 <body>
 
 <h1>Trading Bot Dashboard</h1>
 
-<center>
-<button onclick="loadTrades()">Generate Trade</button>
-</center>
+<button onclick="generateTrade()">Generate Trade</button>
 
-<div id="results"></div>
+<div id="results">Click the button to scan markets...</div>
 
 <script>
+async function generateTrade() {
+    const resultsDiv = document.getElementById("results");
+    resultsDiv.innerText = "Scanning markets...";
 
-const API_URL = https://trading-bot-backend-844654074396.asia-south1.run.app/scan
+    try {
+        const response = await fetch("/scan");
+        const data = await response.json();
 
-async function loadTrades() {
-  const response = await fetch(API_URL);
-  const data = await response.json();
-
-  const container = document.getElementById("results");
-  container.innerHTML = "";
-
-  data.results.forEach(trade => {
-    const div = document.createElement("div");
-    div.className = "card";
-
-    div.innerHTML = `
-      <h3>${trade.asset}</h3>
-      <div class="price">Price: ${trade.price}</div>
-      <p>Signal: ${trade.signal}</p>
-      <p>Entry: ${trade.entry}</p>
-      <p>Take Profit: ${trade.take_profit}</p>
-      <p>Stop Loss: ${trade.stop_loss}</p>
-      <p>Leverage: ${trade.leverage}x</p>
-      <p>Duration: ${trade.duration}</p>
-    `;
-
-    container.appendChild(div);
-  });
+        resultsDiv.innerText = JSON.stringify(data, null, 2);
+    } catch (error) {
+        resultsDiv.innerText = "Error connecting to server.";
+    }
 }
-
 </script>
 
 </body>
-  </html>
+</html>
