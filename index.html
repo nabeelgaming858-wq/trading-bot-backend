@@ -3,124 +3,133 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Trading Bot Dashboard</title>
+<title>Trading Bot Pro</title>
 
 <style>
-* {
-    box-sizing: border-box;
-    font-family: Arial, sans-serif;
+body{
+margin:0;
+font-family:Arial;
+background:linear-gradient(135deg,#0f172a,#020617);
+color:white;
 }
 
-body {
-    margin: 0;
-    background: linear-gradient(135deg,#0f172a,#1e293b);
-    color: white;
+header{
+padding:20px;
+text-align:center;
+font-size:28px;
+font-weight:bold;
 }
 
-header {
-    padding: 20px;
-    text-align: center;
-    font-size: 28px;
-    font-weight: bold;
+.controls{
+display:flex;
+flex-wrap:wrap;
+gap:10px;
+justify-content:center;
+padding:20px;
 }
 
-.controls {
-    text-align: center;
-    margin: 20px;
+select,button,input{
+padding:12px;
+border-radius:8px;
+border:none;
+font-size:16px;
 }
 
-button {
-    padding: 14px 30px;
-    font-size: 18px;
-    background: #22c55e;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
+button{
+background:#22c55e;
+color:white;
+cursor:pointer;
 }
 
-button:hover {
-    background: #16a34a;
+button:hover{background:#16a34a;}
+
+.grid{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+gap:20px;
+padding:20px;
 }
 
-.grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit,minmax(280px,1fr));
-    gap: 20px;
-    padding: 20px;
+.card{
+background:rgba(255,255,255,0.05);
+border-radius:12px;
+padding:20px;
+backdrop-filter:blur(10px);
 }
 
-.card {
-    background: rgba(255,255,255,0.05);
-    border-radius: 12px;
-    padding: 20px;
-    backdrop-filter: blur(10px);
-}
+.buy{color:#22c55e;}
+.sell{color:#ef4444;}
 
-.asset {
-    font-size: 20px;
-    font-weight: bold;
-}
-
-.buy {
-    color: #22c55e;
-}
-
-.sell {
-    color: #ef4444;
-}
-
-.loading {
-    text-align: center;
-    padding: 40px;
-    font-size: 18px;
+.status{
+text-align:center;
+opacity:0.8;
 }
 </style>
 </head>
 
 <body>
 
-<header>Trading Bot Dashboard</header>
+<header>Trading Bot Pro Dashboard</header>
 
 <div class="controls">
-    <button onclick="generateTrade()">Generate Trade</button>
+
+<select id="market">
+<option value="all">All Markets</option>
+<option value="crypto">Crypto</option>
+<option value="forex">Forex</option>
+<option value="metals">Metals</option>
+</select>
+
+<select id="duration">
+<option value="15m">Scalp (15m)</option>
+<option value="1h">Intraday (1h)</option>
+<option value="4h">Swing (4h)</option>
+</select>
+
+<select id="risk">
+<option value="safe">Conservative</option>
+<option value="balanced">Balanced</option>
+<option value="aggressive">Aggressive</option>
+</select>
+
+<button onclick="generateTrade()">Generate Best Trade</button>
+
 </div>
+
+<div class="status" id="status">Ready</div>
 
 <div id="results" class="grid"></div>
 
 <script>
 
-function createCard(trade) {
-    const directionClass = trade.direction === "BUY" ? "buy" : "sell";
+function createCard(t){
+let color=t.direction==="BUY"?"buy":"sell";
 
-    return `
-    <div class="card">
-        <div class="asset">${trade.asset}</div>
-        <p>Market: ${trade.market}</p>
-        <p>Direction: <span class="${directionClass}">${trade.direction}</span></p>
-        <p>Entry: ${trade.entry}</p>
-        <p>TP: ${trade.take_profit} (${trade.tp_percent}%)</p>
-        <p>SL: ${trade.stop_loss} (${trade.sl_percent}%)</p>
-        <p>Leverage: ${trade.leverage}x</p>
-        <p>Confidence: ${trade.confidence}%</p>
-        <p>Duration: ${trade.duration}</p>
-    </div>`;
+return `
+<div class="card">
+<h3>${t.asset}</h3>
+<p>Market: ${t.market}</p>
+<p>Direction: <span class="${color}">${t.direction}</span></p>
+<p>Entry: ${t.entry}</p>
+<p>TP: ${t.take_profit} (${t.tp_percent}%)</p>
+<p>SL: ${t.stop_loss} (${t.sl_percent}%)</p>
+<p>Leverage: ${t.leverage}x</p>
+<p>Confidence: ${t.confidence}%</p>
+<p>Duration: ${t.duration}</p>
+</div>`;
 }
 
-async function generateTrade() {
-    const container = document.getElementById("results");
-    container.innerHTML = `<div class="loading">Scanning markets...</div>`;
+async function generateTrade(){
 
-    try {
-        const response = await fetch("/scan");
-        const data = await response.json();
+document.getElementById("status").innerText="Scanning markets...";
 
-        container.innerHTML = data.results
-            .map(trade => createCard(trade))
-            .join("");
+let res=await fetch("/scan");
+let data=await res.json();
 
-    } catch {
-        container.innerHTML = `<div class="loading">Error connecting to server</div>`;
-    }
+document.getElementById("results").innerHTML=
+data.results.map(createCard).join("");
+
+document.getElementById("status").innerText="Scan complete";
 }
 
 </script>
