@@ -1,7 +1,3 @@
 flask
 requests
-aiohttp
-asyncio
-pandas
-numpy
-python-dotenv
+gunicorn
