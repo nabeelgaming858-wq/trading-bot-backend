@@ -1,131 +1,156 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, render_template
 import requests
 import random
-import os
 import time
 
-app = Flask(__name__, static_folder=".")
+app = Flask(__name__)
 
-###################################
+# ===============================
 # ASSET LISTS
-###################################
+# ===============================
 
 CRYPTO_ASSETS = [
-"BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT",
-"ADAUSDT","DOGEUSDT","AVAXUSDT","DOTUSDT","MATICUSDT",
-"LTCUSDT","TRXUSDT","LINKUSDT","ATOMUSDT","XLMUSDT",
-"ETCUSDT","NEARUSDT","APTUSDT","FILUSDT","ARBUSDT",
-"OPUSDT","SANDUSDT","AAVEUSDT","EOSUSDT","ICPUSDT"
+    "BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
+    "SOLUSDT","DOGEUSDT","DOTUSDT","MATICUSDT","AVAXUSDT",
+    "LTCUSDT","TRXUSDT","LINKUSDT","ATOMUSDT","ETCUSDT",
+    "XLMUSDT","ICPUSDT","FILUSDT","APTUSDT","ARBUSDT",
+    "OPUSDT","NEARUSDT","VETUSDT","SANDUSDT","AAVEUSDT"
 ]
 
 FOREX_PAIRS = [
-"EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD",
-"USDCAD","NZDUSD","EURJPY","GBPJPY","EURGBP",
-"AUDJPY","CHFJPY","EURAUD","GBPAUD","EURCHF"
+    "EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD",
+    "USD/CHF","NZD/USD","EUR/GBP","EUR/JPY","GBP/JPY",
+    "AUD/JPY","EUR/AUD","GBP/AUD","EUR/CAD","GBP/CAD"
 ]
 
-METALS = {
-"GOLD":"XAUUSD",
-"SILVER":"XAGUSD"
-}
-
-###################################
-# PRICE FETCHERS
-###################################
+# ===============================
+# CRYPTO PRICE ENGINE
+# ===============================
 
 def get_crypto_price(symbol):
+
+    # Binance primary
     try:
-        url=f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-        r=requests.get(url,timeout=3)
-        return float(r.json()["price"])
+        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+        r = requests.get(url, timeout=3)
+        data = r.json()
+        return float(data["price"])
     except:
-        return round(random.uniform(1,1000),2)
+        pass
+
+    # CoinGecko fallback
+    try:
+        coin = symbol.replace("USDT","").lower()
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd"
+        r = requests.get(url, timeout=3)
+        data = r.json()
+        return float(data[coin]["usd"])
+    except:
+        return None
+
+# ===============================
+# FOREX PRICE ENGINE
+# ===============================
 
 def get_forex_price(pair):
+
+    base, quote = pair.split("/")
+
+    # TwelveData primary
     try:
-        url=f"https://api.exchangerate.host/latest?base={pair[:3]}&symbols={pair[3:]}"
-        r=requests.get(url,timeout=3)
-        return float(r.json()["rates"][pair[3:]])
+        url = f"https://api.twelvedata.com/price?symbol={base}/{quote}&apikey=demo"
+        r = requests.get(url, timeout=3)
+        data = r.json()
+        return float(data["price"])
     except:
-        return round(random.uniform(0.5,2),4)
+        pass
 
-def get_metals_price(symbol):
+    # Alpha Vantage fallback
     try:
-        url="https://api.metals.live/v1/spot"
-        r=requests.get(url,timeout=3).json()
-        for item in r:
-            if symbol.lower() in item:
-                return float(item[symbol.lower()])
+        url = f"https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency={base}&to_currency={quote}&apikey=demo"
+        r = requests.get(url, timeout=3)
+        data = r.json()
+        rate = data["Realtime Currency Exchange Rate"]["5. Exchange Rate"]
+        return float(rate)
     except:
-        return round(random.uniform(20,2000),2)
+        return None
 
-###################################
-# SIGNAL GENERATOR
-###################################
+# ===============================
+# SIMPLE ANALYSIS ENGINE
+# ===============================
 
-def generate_signal(asset, market, price):
+def generate_trade(asset, market, price):
 
-    direction=random.choice(["BUY","SELL"])
+    direction = random.choice(["BUY","SELL"])
 
-    move=random.uniform(0.3,1.5)/100
+    sl_percent = random.uniform(0.5,1.2)
+    tp_percent = random.uniform(1.0,2.0)
 
-    if direction=="BUY":
-        tp=round(price*(1+move),4)
-        sl=round(price*(1-move*0.7),4)
+    if direction == "BUY":
+        stop_loss = price * (1 - sl_percent/100)
+        take_profit = price * (1 + tp_percent/100)
     else:
-        tp=round(price*(1-move),4)
-        sl=round(price*(1+move*0.7),4)
+        stop_loss = price * (1 + sl_percent/100)
+        take_profit = price * (1 - tp_percent/100)
+
+    confidence = round(random.uniform(82,95),1)
+    leverage = random.choice([5,10,15,20])
+    duration = random.choice(["15m","30m","1h","4h"])
 
     return {
-        "asset":asset,
-        "market":market,
-        "direction":direction,
-        "entry":round(price,4),
-        "take_profit":tp,
-        "stop_loss":sl,
-        "tp_percent":round(move*100,2),
-        "sl_percent":round(move*70,2),
-        "leverage":random.choice([5,10,15,20]),
-        "confidence":round(random.uniform(80,95),1),
-        "duration":random.choice(["15m","1h","4h"])
+        "asset": asset,
+        "market": market,
+        "direction": direction,
+        "entry": round(price,4),
+        "take_profit": round(take_profit,4),
+        "tp_percent": round(tp_percent,2),
+        "stop_loss": round(stop_loss,4),
+        "sl_percent": round(sl_percent,2),
+        "leverage": leverage,
+        "confidence": confidence,
+        "duration": duration
     }
 
-###################################
-# SCAN ROUTE
-###################################
+# ===============================
+# API ROUTE
+# ===============================
 
 @app.route("/scan")
 def scan():
 
-    results=[]
+    market = request.args.get("market","crypto").lower()
 
-    # Crypto scan
-    for asset in random.sample(CRYPTO_ASSETS,5):
-        price=get_crypto_price(asset)
-        results.append(generate_signal(asset,"Crypto",price))
+    results = []
 
-    # Forex scan
-    for pair in random.sample(FOREX_PAIRS,3):
-        price=get_forex_price(pair)
-        results.append(generate_signal(pair,"Forex",price))
+    if market == "crypto":
+        assets = random.sample(CRYPTO_ASSETS, 5)
 
-    # Metals
-    for name,symbol in METALS.items():
-        price=get_metals_price(name.lower())
-        results.append(generate_signal(symbol,"Metals",price))
+        for a in assets:
+            price = get_crypto_price(a)
+            if price:
+                results.append(generate_trade(a,"Crypto",price))
 
-    return jsonify({"results":results})
+    if market == "forex":
+        pairs = random.sample(FOREX_PAIRS, 5)
 
-###################################
-# FRONTEND
-###################################
+        for p in pairs:
+            price = get_forex_price(p)
+            if price:
+                results.append(generate_trade(p,"Forex",price))
+
+    return jsonify({"results": results})
+
+# ===============================
+# MAIN PAGE
+# ===============================
 
 @app.route("/")
-def index():
-    return send_from_directory(".", "index.html")
+def home():
+    return render_template("index.html")
 
-###################################
+# ===============================
+# RUN
+# ===============================
 
 if __name__ == "__main__":
-    port=int(os.environ.get("PORT",8080))
-    app.run(host="0.0.0.0",port=port)
+    app.run(host="0.0.0.0", port=8080)
