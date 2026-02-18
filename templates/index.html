@@ -1,59 +1,85 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Trading Bot</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body{
-            background:#0f172a;
-            color:white;
-            font-family:Arial;
-            text-align:center;
-        }
-        button{
-            background:#22c55e;
-            border:none;
-            padding:15px 30px;
-            font-size:18px;
-            border-radius:10px;
-            cursor:pointer;
-            margin-top:20px;
-        }
-        .card{
-            background:#1e293b;
-            margin:20px;
-            padding:20px;
-            border-radius:15px;
-        }
-    </style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Bot Pro</title>
+
+<style>
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+margin:0;
+text-align:center;
+}
+
+header{
+padding:20px;
+font-size:26px;
+}
+
+select,button{
+padding:12px;
+margin:10px;
+border-radius:8px;
+border:none;
+font-size:16px;
+}
+
+button{
+background:#22c55e;
+cursor:pointer;
+}
+
+.card{
+background:#1e293b;
+margin:15px;
+padding:20px;
+border-radius:12px;
+}
+.buy{color:#22c55e;}
+.sell{color:#ef4444;}
+</style>
 </head>
+
 <body>
 
-<h1>Trading Bot Dashboard</h1>
+<header>Trading Bot Pro</header>
 
-<button onclick="scan()">Generate Trade</button>
+<select id="market">
+<option value="crypto">Crypto</option>
+<option value="forex">Forex</option>
+</select>
+
+<button onclick="generate()">Generate Trade</button>
 
 <div id="results"></div>
 
 <script>
-async function scan(){
-    const res = await fetch('/api/scan');
+async function generate(){
+    const market = document.getElementById("market").value;
+
+    const res = await fetch(`/api/scan?market=${market}`);
     const data = await res.json();
 
     let html = "";
 
     data.results.forEach(t=>{
+        let color = t.direction === "BUY" ? "buy" : "sell";
+
         html += `
         <div class="card">
-        <h2>${t.asset}</h2>
-        Direction: ${t.direction}<br>
+        <h3>${t.asset}</h3>
+        Market: ${t.market}<br>
+        Direction: <span class="${color}">${t.direction}</span><br>
         Entry: ${t.entry}<br>
         TP: ${t.take_profit} (${t.tp_percent}%)<br>
         SL: ${t.stop_loss} (${t.sl_percent}%)<br>
         Leverage: ${t.leverage}x<br>
         Confidence: ${t.confidence}%<br>
         Duration: ${t.duration}
-        </div>`;
+        </div>
+        `;
     });
 
     document.getElementById("results").innerHTML = html;
