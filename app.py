@@ -18,9 +18,9 @@ CRYPTO_ASSETS = [
 ]
 
 FOREX_PAIRS = [
-"EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD",
-"USD/CHF","NZD/USD","EUR/GBP","EUR/JPY","GBP/JPY",
-"AUD/JPY","EUR/AUD","GBP/AUD","EUR/CAD","GBP/CAD"
+"EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD",
+"USDCHF","NZDUSD","EURGBP","EURJPY","GBPJPY",
+"AUDJPY","EURAUD","GBPAUD","EURCAD","GBPCAD"
 ]
 
 # ==============================
@@ -31,31 +31,34 @@ def get_crypto_price(symbol):
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
         r = requests.get(url, timeout=5)
-        return float(r.json()["price"])
+        data = r.json()
+        return float(data["price"])
     except:
         return None
 
-def get_forex_price(pair):
-    base, quote = pair.split("/")
+def get_forex_price(symbol):
     try:
+        base = symbol[:3]
+        quote = symbol[3:]
         url = f"https://api.exchangerate.host/latest?base={base}&symbols={quote}"
         r = requests.get(url, timeout=5)
-        return float(r.json()["rates"][quote])
+        data = r.json()
+        return float(data["rates"][quote])
     except:
         return None
 
 # ==============================
-# SIGNAL ENGINE (LIGHTWEIGHT)
+# SIGNAL ENGINE
 # ==============================
 
 def generate_trade(asset, market, price):
 
     direction = random.choice(["BUY","SELL"])
 
-    volatility = random.uniform(0.4,1.2)
+    volatility = random.uniform(0.4, 1.2)
 
-    tp_percent = round(volatility * 1.5,2)
-    sl_percent = round(volatility * 0.8,2)
+    tp_percent = round(volatility * 1.5, 2)
+    sl_percent = round(volatility * 0.8, 2)
 
     if direction == "BUY":
         take_profit = price * (1 + tp_percent/100)
@@ -68,10 +71,10 @@ def generate_trade(asset, market, price):
         "asset": asset,
         "market": market,
         "direction": direction,
-        "entry": round(price,4),
-        "take_profit": round(take_profit,4),
+        "entry": round(price,6),
+        "take_profit": round(take_profit,6),
         "tp_percent": tp_percent,
-        "stop_loss": round(stop_loss,4),
+        "stop_loss": round(stop_loss,6),
         "sl_percent": sl_percent,
         "leverage": random.choice([5,10,15,20]),
         "confidence": random.randint(82,95),
