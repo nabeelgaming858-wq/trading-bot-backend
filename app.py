@@ -1,100 +1,101 @@
-from flask import Flask, jsonify, send_from_directory
+import asyncio
+import json
+import threading
 import requests
-import random
-import time
+from flask import Flask, render_template, jsonify
+from flask_sock import Sock
+import websockets
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
+app = Flask(__name__)
+sock = Sock(app)
 
+# ===============================
+# CONFIG
+# ===============================
 
-# =========================
-# HEALTH CHECK (VERY IMPORTANT FOR CLOUD RUN)
-# =========================
-@app.route("/health")
-def health():
-    return "OK", 200
-
-
-# =========================
-# HOMEPAGE (FAST LOAD — NO CALCULATIONS)
-# =========================
-@app.route("/")
-def home():
-    return send_from_directory("templates", "index.html")
-
-
-# =========================
-# SIMPLE PRICE FETCH (FAST API ONLY)
-# =========================
-CRYPTO_LIST = [
-    "BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT",
-    "MATICUSDT","DOTUSDT","TRXUSDT","LTCUSDT","LINKUSDT","ATOMUSDT","ETCUSDT",
-    "XLMUSDT","FILUSDT","APTUSDT","NEARUSDT","ARBUSDT","OPUSDT","SUIUSDT",
-    "PEPEUSDT","SHIBUSDT","AAVEUSDT"
+CRYPTO_SYMBOLS = [
+    "btcusdt","ethusdt","bnbusdt","xrpusdt","adausdt","dogeusdt",
+    "solusdt","dotusdt","maticusdt","ltcusdt","linkusdt","avaxusdt",
+    "trxusdt","atomusdt","nearusdt","algo_usdt","filusdt","aptusdt",
+    "sandusdt","manausdt","opususdt","arbousdt","injusdt","tiausdt",
+    "pepeusdt"
 ]
 
-def get_price(symbol):
-    try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-        r = requests.get(url, timeout=3)
-        return float(r.json()["price"])
-    except:
-        return None
+FOREX_SYMBOLS = [
+    "EUR/USD","GBP/USD","USD/JPY","USD/CHF","AUD/USD",
+    "USD/CAD","NZD/USD","EUR/JPY","GBP/JPY","EUR/GBP",
+    "EUR/AUD","GBP/AUD","AUD/JPY","CHF/JPY","EUR/CHF"
+]
 
+latest_prices = {}
+lock = threading.Lock()
 
-# =========================
-# TRADE GENERATOR (ONLY RUNS WHEN BUTTON CLICKED)
-# =========================
-@app.route("/api/scan")
-def scan():
-    results = []
+# ===============================
+# BINANCE WEBSOCKET
+# ===============================
 
-    selected = random.sample(CRYPTO_LIST, 5)
+async def binance_ws():
+    streams = "/".join([f"{s}@miniTicker" for s in CRYPTO_SYMBOLS])
+    url = f"wss://stream.binance.com:9443/stream?streams={streams}"
 
-    for sym in selected:
-        price = get_price(sym)
-        if not price:
-            continue
+    while True:
+        try:
+            async with websockets.connect(url) as ws:
+                async for msg in ws:
+                    data = json.loads(msg)
+                    if "data" in data:
+                        symbol = data["data"]["s"].lower()
+                        price = float(data["data"]["c"])
+                        with lock:
+                            latest_prices[symbol] = price
+        except:
+            await asyncio.sleep(5)
 
-        direction = random.choice(["BUY", "SELL"])
+# ===============================
+# FOREX POLLING (Free API Limit)
+# ===============================
 
-        volatility = random.uniform(0.3, 1.2)
+def update_forex():
+    while True:
+        try:
+            for pair in FOREX_SYMBOLS:
+                url = f"https://api.twelvedata.com/price?symbol={pair}&apikey=demo"
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                if "price" in data:
+                    with lock:
+                        latest_prices[pair] = float(data["price"])
+        except:
+            pass
+        asyncio.sleep(10)
 
-        tp_percent = round(volatility * 1.4, 2)
-        sl_percent = round(volatility * 0.8, 2)
+# ===============================
+# BACKGROUND START
+# ===============================
 
-        if direction == "BUY":
-            tp = price * (1 + tp_percent/100)
-            sl = price * (1 - sl_percent/100)
-        else:
-            tp = price * (1 - tp_percent/100)
-            sl = price * (1 + sl_percent/100)
+def start_background():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(binance_ws())
 
-        trade = {
-            "asset": sym,
-            "market": "Crypto",
-            "price": round(price, 4),
-            "direction": direction,
-            "entry": round(price, 4),
-            "take_profit": round(tp, 4),
-            "tp_percent": tp_percent,
-            "stop_loss": round(sl, 4),
-            "sl_percent": sl_percent,
-            "leverage": random.choice([5,10,15,20]),
-            "confidence": random.randint(82, 96),
-            "duration": random.choice(["5m","15m","30m","1h","4h"])
-        }
+threading.Thread(target=start_background, daemon=True).start()
 
-        results.append(trade)
+# ===============================
+# ROUTES
+# ===============================
 
-    return jsonify({
-        "status": "success",
-        "results": results,
-        "server_time": int(time.time())
-    })
+@app.route("/")
+def index():
+    return render_template("index.html")
 
+@app.route("/prices")
+def prices():
+    with lock:
+        return jsonify(latest_prices)
 
-# =========================
-# RUN
-# =========================
+# ===============================
+# MAIN
+# ===============================
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
