@@ -37,8 +37,13 @@ margin:15px;
 padding:20px;
 border-radius:12px;
 }
+
 .buy{color:#22c55e;}
 .sell{color:#ef4444;}
+.loading{
+margin:20px;
+font-size:18px;
+}
 </style>
 </head>
 
@@ -57,32 +62,46 @@ border-radius:12px;
 
 <script>
 async function generate(){
+
     const market = document.getElementById("market").value;
+    const container = document.getElementById("results");
 
-    const res = await fetch(`/api/scan?market=${market}`);
-    const data = await res.json();
+    container.innerHTML = "<div class='loading'>Scanning market...</div>";
 
-    let html = "";
+    try {
+        const res = await fetch(`/api/scan?market=${market}`);
+        const data = await res.json();
 
-    data.results.forEach(t=>{
-        let color = t.direction === "BUY" ? "buy" : "sell";
+        if(!data.results || data.results.length === 0){
+            container.innerHTML = "<div class='loading'>No trades found.</div>";
+            return;
+        }
 
-        html += `
-        <div class="card">
-        <h3>${t.asset}</h3>
-        Market: ${t.market}<br>
-        Direction: <span class="${color}">${t.direction}</span><br>
-        Entry: ${t.entry}<br>
-        TP: ${t.take_profit} (${t.tp_percent}%)<br>
-        SL: ${t.stop_loss} (${t.sl_percent}%)<br>
-        Leverage: ${t.leverage}x<br>
-        Confidence: ${t.confidence}%<br>
-        Duration: ${t.duration}
-        </div>
-        `;
-    });
+        let html = "";
 
-    document.getElementById("results").innerHTML = html;
+        data.results.forEach(t=>{
+            let color = t.direction === "BUY" ? "buy" : "sell";
+
+            html += `
+            <div class="card">
+            <h3>${t.asset}</h3>
+            Market: ${t.market}<br>
+            Direction: <span class="${color}">${t.direction}</span><br>
+            Entry: ${t.entry}<br>
+            TP: ${t.take_profit} (${t.tp_percent}%)<br>
+            SL: ${t.stop_loss} (${t.sl_percent}%)<br>
+            Leverage: ${t.leverage}x<br>
+            Confidence: ${t.confidence}%<br>
+            Duration: ${t.duration}
+            </div>
+            `;
+        });
+
+        container.innerHTML = html;
+
+    } catch(e){
+        container.innerHTML = "<div class='loading'>Error loading trades.</div>";
+    }
 }
 </script>
 
