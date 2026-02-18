@@ -40,10 +40,31 @@ def get_forex_price(symbol):
     try:
         base = symbol[:3]
         quote = symbol[3:]
-        url = f"https://api.exchangerate.host/latest?base={base}&symbols={quote}"
+
+        # Fetch USD base table once
+        url = "https://open.er-api.com/v6/latest/USD"
         r = requests.get(url, timeout=5)
         data = r.json()
-        return float(data["rates"][quote])
+
+        rates = data.get("rates", {})
+
+        if base == "USD":
+            return rates.get(quote)
+
+        if quote == "USD":
+            rate = rates.get(base)
+            if rate:
+                return 1 / rate
+
+        # Cross calculation
+        base_rate = rates.get(base)
+        quote_rate = rates.get(quote)
+
+        if base_rate and quote_rate:
+            return quote_rate / base_rate
+
+        return None
+
     except:
         return None
 
