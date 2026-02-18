@@ -1,13 +1,15 @@
 from flask import Flask, jsonify, render_template, request
 import requests
 import random
+import pandas as pd
+import numpy as np
 import time
 
 app = Flask(__name__, template_folder="templates")
 
-# ==============================
+# =========================
 # CONFIG
-# ==============================
+# =========================
 
 CRYPTO_ASSETS = [
 "BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
@@ -23,88 +25,91 @@ FOREX_PAIRS = [
 "AUDJPY","EURAUD","GBPAUD","EURCAD","GBPCAD"
 ]
 
-# ==============================
-# PRICE FETCHERS
-# ==============================
+# =========================
+# INDICATORS
+# =========================
 
-def get_crypto_price(symbol):
-    try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-        r = requests.get(url, timeout=5)
-        data = r.json()
-        return float(data["price"])
-    except:
+def calculate_indicators(df):
+
+    df["EMA21"] = df["close"].ewm(span=21).mean()
+    df["EMA50"] = df["close"].ewm(span=50).mean()
+
+    delta = df["close"].diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean()
+    rs = avg_gain / avg_loss
+    df["RSI"] = 100 - (100 / (1 + rs))
+
+    df["ATR"] = (df["high"] - df["low"]).rolling(14).mean()
+
+    return df
+
+# =========================
+# SCORING ENGINE
+# =========================
+
+def score_asset(df):
+
+    latest = df.iloc[-1]
+    score = 0
+    direction = None
+
+    if latest["EMA21"] > latest["EMA50"]:
+        score += 2
+        direction = "BUY"
+    elif latest["EMA21"] < latest["EMA50"]:
+        score += 2
+        direction = "SELL"
+
+    if direction == "BUY" and latest["RSI"] > 50:
+        score += 2
+    if direction == "SELL" and latest["RSI"] < 50:
+        score += 2
+
+    if latest["ATR"] > df["ATR"].mean():
+        score += 1
+
+    if 30 < latest["RSI"] < 70:
+        score += 1
+
+    return score, direction
+
+# =========================
+# DATA FETCH
+# =========================
+
+def get_crypto_ohlc(symbol):
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
+    r = requests.get(url, timeout=5)
+    data = r.json()
+    df = pd.DataFrame(data, columns=[
+        "open_time","open","high","low","close","volume",
+        "close_time","qav","trades","tbav","tqav","ignore"
+    ])
+    df["close"] = df["close"].astype(float)
+    df["high"] = df["high"].astype(float)
+    df["low"] = df["low"].astype(float)
+    return df
+
+def get_forex_ohlc(symbol):
+    base = symbol[:3]
+    quote = symbol[3:]
+    url = f"https://api.twelvedata.com/time_series?symbol={base}/{quote}&interval=15min&outputsize=100&apikey=demo"
+    r = requests.get(url, timeout=5)
+    data = r.json()
+    if "values" not in data:
         return None
+    df = pd.DataFrame(data["values"])
+    df["close"] = df["close"].astype(float)
+    df["high"] = df["high"].astype(float)
+    df["low"] = df["low"].astype(float)
+    return df.iloc[::-1]
 
-def get_forex_price(symbol):
-    try:
-        base = symbol[:3]
-        quote = symbol[3:]
-
-        # Fetch USD base table once
-        url = "https://open.er-api.com/v6/latest/USD"
-        r = requests.get(url, timeout=5)
-        data = r.json()
-
-        rates = data.get("rates", {})
-
-        if base == "USD":
-            return rates.get(quote)
-
-        if quote == "USD":
-            rate = rates.get(base)
-            if rate:
-                return 1 / rate
-
-        # Cross calculation
-        base_rate = rates.get(base)
-        quote_rate = rates.get(quote)
-
-        if base_rate and quote_rate:
-            return quote_rate / base_rate
-
-        return None
-
-    except:
-        return None
-
-# ==============================
-# SIGNAL ENGINE
-# ==============================
-
-def generate_trade(asset, market, price):
-
-    direction = random.choice(["BUY","SELL"])
-
-    volatility = random.uniform(0.4, 1.2)
-
-    tp_percent = round(volatility * 1.5, 2)
-    sl_percent = round(volatility * 0.8, 2)
-
-    if direction == "BUY":
-        take_profit = price * (1 + tp_percent/100)
-        stop_loss = price * (1 - sl_percent/100)
-    else:
-        take_profit = price * (1 - tp_percent/100)
-        stop_loss = price * (1 + sl_percent/100)
-
-    return {
-        "asset": asset,
-        "market": market,
-        "direction": direction,
-        "entry": round(price,6),
-        "take_profit": round(take_profit,6),
-        "tp_percent": tp_percent,
-        "stop_loss": round(stop_loss,6),
-        "sl_percent": sl_percent,
-        "leverage": random.choice([5,10,15,20]),
-        "confidence": random.randint(82,95),
-        "duration": random.choice(["5m","15m","30m","1h","4h"])
-    }
-
-# ==============================
+# =========================
 # ROUTES
-# ==============================
+# =========================
 
 @app.route("/")
 def home():
@@ -114,31 +119,57 @@ def home():
 def scan():
 
     market = request.args.get("market","crypto").lower()
-
     results = []
 
-    if market == "crypto":
-        selected = random.sample(CRYPTO_ASSETS,5)
-        for asset in selected:
-            price = get_crypto_price(asset)
-            if price:
-                results.append(generate_trade(asset,"Crypto",price))
+    assets = CRYPTO_ASSETS if market=="crypto" else FOREX_PAIRS
 
-    elif market == "forex":
-        selected = random.sample(FOREX_PAIRS,5)
-        for pair in selected:
-            price = get_forex_price(pair)
-            if price:
-                results.append(generate_trade(pair,"Forex",price))
+    for asset in random.sample(assets,8):
+
+        try:
+            df = get_crypto_ohlc(asset) if market=="crypto" else get_forex_ohlc(asset)
+            if df is None:
+                continue
+
+            df = calculate_indicators(df)
+            score, direction = score_asset(df)
+
+            if score >= 5 and direction:
+
+                price = df.iloc[-1]["close"]
+                atr = df.iloc[-1]["ATR"]
+
+                if direction == "BUY":
+                    sl = price - (1.5 * atr)
+                    tp = price + (2 * atr)
+                else:
+                    sl = price + (1.5 * atr)
+                    tp = price - (2 * atr)
+
+                results.append({
+                    "asset": asset,
+                    "market": market.capitalize(),
+                    "direction": direction,
+                    "entry": round(price,6),
+                    "take_profit": round(tp,6),
+                    "stop_loss": round(sl,6),
+                    "score": score,
+                    "volatility": round(atr,6)
+                })
+
+        except:
+            continue
+
+    results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
     return jsonify({
         "timestamp": int(time.time()),
         "results": results
     })
 
-# ==============================
+# =========================
 # RUN
-# ==============================
+# =========================
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+        
