@@ -36,7 +36,7 @@ def calculate_indicators(df):
     return df
 
 # =========================
-# TIMEFRAME LOGIC
+# TIMEFRAME MAP
 # =========================
 
 def timeframe_map(type, minutes):
@@ -77,7 +77,7 @@ def get_ohlc(symbol, interval):
     return df
 
 # =========================
-# SCORING
+# EVALUATION
 # =========================
 
 def evaluate(df):
@@ -102,6 +102,23 @@ def evaluate(df):
         score += 1
 
     return score, direction
+
+# =========================
+# VOLATILITY CHECK
+# =========================
+
+def volatility_status(df):
+
+    current_atr = df.iloc[-1]["ATR"]
+    avg_atr = df["ATR"].mean()
+
+    ratio = current_atr / avg_atr
+
+    if ratio > 1.8:
+        return "EXTREME"
+    if ratio > 1.3:
+        return "HIGH"
+    return "NORMAL"
 
 # =========================
 # ROUTE
@@ -136,6 +153,11 @@ def scan():
 
                 if combined_score >= 7:
 
+                    vol_state = volatility_status(df1)
+
+                    if vol_state == "EXTREME":
+                        continue
+
                     price = df1.iloc[-1]["close"]
                     atr = df1.iloc[-1]["ATR"]
 
@@ -151,7 +173,10 @@ def scan():
                         tp = price - tp_distance
                         sl = price + sl_distance
 
-                    leverage = min(max(int(12/(atr/price)),3),25)
+                    base_leverage = min(max(int(12/(atr/price)),3),25)
+
+                    if vol_state == "HIGH":
+                        base_leverage = max(base_leverage - 5, 3)
 
                     results.append({
                         "asset": asset,
@@ -162,7 +187,8 @@ def scan():
                         "score": combined_score,
                         "primary_tf": primary_tf,
                         "confirm_tf": confirm_tf,
-                        "leverage": leverage
+                        "leverage": base_leverage,
+                        "volatility": vol_state
                     })
 
         except:
