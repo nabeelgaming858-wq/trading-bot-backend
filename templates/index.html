@@ -2,33 +2,33 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quant Trading Engine</title>
+<title>Quant Pro Trading Engine</title>
 
 <style>
 body{
     margin:0;
-    font-family:Arial;
+    font-family:Arial, sans-serif;
     background:#0b1220;
     color:white;
 }
 
 header{
+    background:#111827;
     padding:20px;
     text-align:center;
-    font-size:24px;
+    font-size:22px;
     font-weight:bold;
-    background:#111827;
 }
 
 .controls{
     display:flex;
     flex-wrap:wrap;
-    justify-content:center;
     gap:10px;
+    justify-content:center;
     padding:20px;
 }
 
-select,button{
+button, select, input{
     padding:10px 14px;
     border-radius:8px;
     border:none;
@@ -43,6 +43,14 @@ button{
 
 button:hover{
     background:#15803d;
+}
+
+.mode-btn{
+    background:#1f2937;
+}
+
+.mode-btn.active{
+    background:#2563eb;
 }
 
 .grid{
@@ -83,30 +91,21 @@ button:hover{
 
 <body>
 
-<header>Quantitative Trading Engine</header>
+<header>Quant Pro Trading Engine</header>
 
 <div class="controls">
 
 <select id="market">
 <option value="crypto">Crypto</option>
-<option value="forex">Forex</option>
 </select>
 
-<select id="risk">
-<option value="conservative">Conservative</option>
-<option value="balanced">Balanced</option>
-<option value="aggressive">Aggressive</option>
-</select>
+<button class="mode-btn active" onclick="setMode('scalp', this)">Scalp</button>
+<button class="mode-btn" onclick="setMode('intraday', this)">Intraday</button>
+<button class="mode-btn" onclick="setMode('swing', this)">Swing</button>
 
-<select id="duration">
-<option value="5m">5 Minutes</option>
-<option value="15m">15 Minutes</option>
-<option value="30m">30 Minutes</option>
-<option value="1h">1 Hour</option>
-<option value="4h">4 Hours</option>
-</select>
+<input type="number" id="customMinutes" placeholder="Custom Minutes" min="1" style="width:140px;">
 
-<button onclick="generate()">Generate Top Trades</button>
+<button onclick="generate()">Generate Trades</button>
 
 </div>
 
@@ -114,15 +113,24 @@ button:hover{
 
 <script>
 
+let tradeType = "scalp";
+
+function setMode(mode, element){
+    tradeType = mode;
+    document.querySelectorAll(".mode-btn").forEach(btn=>btn.classList.remove("active"));
+    element.classList.add("active");
+}
+
 async function generate(){
 
     const market = document.getElementById("market").value;
+    const customMinutes = document.getElementById("customMinutes").value || 15;
     const container = document.getElementById("results");
 
-    container.innerHTML = "<div class='loading'>Analyzing market...</div>";
+    container.innerHTML = "<div class='loading'>Running Quant Analysis...</div>";
 
     try{
-        const res = await fetch(`/api/scan?market=${market}`);
+        const res = await fetch(`/api/scan?market=${market}&type=${tradeType}&minutes=${customMinutes}`);
         const data = await res.json();
 
         if(!data.results || data.results.length === 0){
@@ -143,10 +151,11 @@ async function generate(){
                 Entry: ${t.entry}<br>
                 Take Profit: ${t.take_profit}<br>
                 Stop Loss: ${t.stop_loss}<br>
+                Leverage: ${t.leverage}x<br>
+                Timeframe Used: ${t.interval}<br>
                 <div class="meta">
                     Score: ${t.score} / 7<br>
-                    Volatility (ATR): ${t.volatility}<br>
-                    Logic: EMA Trend + RSI Momentum + ATR Volatility
+                    Logic: ${t.logic}
                 </div>
             </div>
             `;
@@ -158,6 +167,7 @@ async function generate(){
         container.innerHTML = "<div class='loading'>Error loading analysis.</div>";
     }
 }
+
 </script>
 
 </body>
