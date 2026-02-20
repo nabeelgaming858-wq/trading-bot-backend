@@ -51,15 +51,13 @@ def get_ohlc(symbol):
     return df
 
 # =========================
-# ROUTES
+# GENERATE TRADES
 # =========================
-
-@app.route("/")
-def home():
-    return render_template("index.html")
 
 @app.route("/api/scan")
 def scan():
+
+    duration_minutes = int(request.args.get("minutes","60"))
 
     results = []
 
@@ -85,7 +83,9 @@ def scan():
                     "tp": tp,
                     "sl": sl,
                     "status": "OPEN",
-                    "created_at": time.time()
+                    "created_at": time.time(),
+                    "duration_minutes": duration_minutes,
+                    "expires_at": time.time() + (duration_minutes * 60)
                 }
 
                 TRADE_LOG.append(trade)
@@ -103,9 +103,16 @@ def scan():
 @app.route("/api/monitor")
 def monitor():
 
+    now = time.time()
+
     for trade in TRADE_LOG:
 
         if trade["status"] != "OPEN":
+            continue
+
+        # Expiration check
+        if now > trade["expires_at"]:
+            trade["status"] = "EXPIRED"
             continue
 
         try:
@@ -122,13 +129,28 @@ def monitor():
         except:
             continue
 
+    total = len(TRADE_LOG)
+    tp_hits = len([t for t in TRADE_LOG if t["status"]=="TP HIT"])
+    sl_hits = len([t for t in TRADE_LOG if t["status"]=="SL HIT"])
+    expired = len([t for t in TRADE_LOG if t["status"]=="EXPIRED"])
+    open_trades = len([t for t in TRADE_LOG if t["status"]=="OPEN"])
+
+    completed = tp_hits + sl_hits
+    winrate = (tp_hits / completed * 100) if completed > 0 else 0
+
     return jsonify({
-        "total_trades": len(TRADE_LOG),
-        "tp_hits": len([t for t in TRADE_LOG if t["status"]=="TP HIT"]),
-        "sl_hits": len([t for t in TRADE_LOG if t["status"]=="SL HIT"]),
-        "open_trades": len([t for t in TRADE_LOG if t["status"]=="OPEN"]),
+        "total_trades": total,
+        "tp_hits": tp_hits,
+        "sl_hits": sl_hits,
+        "expired": expired,
+        "open_trades": open_trades,
+        "win_rate": round(winrate,1),
         "trades": TRADE_LOG
     })
+
+@app.route("/")
+def home():
+    return render_template("index.html")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
