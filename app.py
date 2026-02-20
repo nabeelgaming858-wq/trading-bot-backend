@@ -1,9 +1,9 @@
 from flask import Flask, jsonify, render_template, request
 import requests
-import random
 import pandas as pd
 import numpy as np
 import time
+import math
 
 app = Flask(__name__, template_folder="templates")
 
@@ -47,41 +47,32 @@ def calculate_indicators(df):
     return df
 
 # =========================
-# SCORING ENGINE
+# TIMEFRAME MAPPING
 # =========================
 
-def score_asset(df):
+def map_duration(duration_type, custom_minutes):
 
-    latest = df.iloc[-1]
-    score = 0
-    direction = None
-
-    if latest["EMA21"] > latest["EMA50"]:
-        score += 2
-        direction = "BUY"
-    elif latest["EMA21"] < latest["EMA50"]:
-        score += 2
-        direction = "SELL"
-
-    if direction == "BUY" and latest["RSI"] > 50:
-        score += 2
-    if direction == "SELL" and latest["RSI"] < 50:
-        score += 2
-
-    if latest["ATR"] > df["ATR"].mean():
-        score += 1
-
-    if 30 < latest["RSI"] < 70:
-        score += 1
-
-    return score, direction
+    if duration_type == "scalp":
+        return "5m"
+    if duration_type == "intraday":
+        return "15m"
+    if duration_type == "swing":
+        return "1h"
+    if duration_type == "custom":
+        if custom_minutes <= 15:
+            return "5m"
+        if custom_minutes <= 60:
+            return "15m"
+        if custom_minutes <= 240:
+            return "1h"
+        return "4h"
 
 # =========================
 # DATA FETCH
 # =========================
 
-def get_crypto_ohlc(symbol):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
+def get_crypto_ohlc(symbol, interval):
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit=100"
     r = requests.get(url, timeout=5)
     data = r.json()
     df = pd.DataFrame(data, columns=[
@@ -93,22 +84,42 @@ def get_crypto_ohlc(symbol):
     df["low"] = df["low"].astype(float)
     return df
 
-def get_forex_ohlc(symbol):
-    base = symbol[:3]
-    quote = symbol[3:]
-    url = f"https://api.twelvedata.com/time_series?symbol={base}/{quote}&interval=15min&outputsize=100&apikey=demo"
-    r = requests.get(url, timeout=5)
-    data = r.json()
-    if "values" not in data:
-        return None
-    df = pd.DataFrame(data["values"])
-    df["close"] = df["close"].astype(float)
-    df["high"] = df["high"].astype(float)
-    df["low"] = df["low"].astype(float)
-    return df.iloc[::-1]
+# =========================
+# SCORING
+# =========================
+
+def score_asset(df):
+
+    latest = df.iloc[-1]
+    score = 0
+    direction = None
+
+    # Trend
+    if latest["EMA21"] > latest["EMA50"]:
+        score += 2
+        direction = "BUY"
+    elif latest["EMA21"] < latest["EMA50"]:
+        score += 2
+        direction = "SELL"
+
+    # Momentum
+    if direction == "BUY" and latest["RSI"] > 55:
+        score += 2
+    if direction == "SELL" and latest["RSI"] < 45:
+        score += 2
+
+    # Volatility
+    if latest["ATR"] > df["ATR"].mean():
+        score += 1
+
+    # Stability
+    if 35 < latest["RSI"] < 65:
+        score += 1
+
+    return score, direction
 
 # =========================
-# ROUTES
+# ROUTE
 # =========================
 
 @app.route("/")
@@ -118,42 +129,54 @@ def home():
 @app.route("/api/scan")
 def scan():
 
-    market = request.args.get("market","crypto").lower()
+    market = request.args.get("market","crypto")
+    duration_type = request.args.get("type","scalp")
+    custom_minutes = int(request.args.get("minutes","15"))
+
+    interval = map_duration(duration_type, custom_minutes)
+
     results = []
+    assets = CRYPTO_ASSETS if market=="crypto" else CRYPTO_ASSETS
 
-    assets = CRYPTO_ASSETS if market=="crypto" else FOREX_PAIRS
-
-    for asset in random.sample(assets,8):
+    for asset in assets[:12]:
 
         try:
-            df = get_crypto_ohlc(asset) if market=="crypto" else get_forex_ohlc(asset)
-            if df is None:
-                continue
-
+            df = get_crypto_ohlc(asset, interval)
             df = calculate_indicators(df)
+
             score, direction = score_asset(df)
 
-            if score >= 5 and direction:
+            if score >= 6:
 
-                price = df.iloc[-1]["close"]
-                atr = df.iloc[-1]["ATR"]
+                latest = df.iloc[-1]
+                price = latest["close"]
+                atr = latest["ATR"]
+
+                # Duration scaling factor
+                duration_factor = max(custom_minutes/30, 1)
+
+                tp_distance = atr * 1.8 * duration_factor
+                sl_distance = atr * 1.2 * duration_factor
 
                 if direction == "BUY":
-                    sl = price - (1.5 * atr)
-                    tp = price + (2 * atr)
+                    tp = price + tp_distance
+                    sl = price - sl_distance
                 else:
-                    sl = price + (1.5 * atr)
-                    tp = price - (2 * atr)
+                    tp = price - tp_distance
+                    sl = price + sl_distance
+
+                leverage = min(max(int(10 / (atr/price)), 3), 20)
 
                 results.append({
                     "asset": asset,
-                    "market": market.capitalize(),
                     "direction": direction,
                     "entry": round(price,6),
                     "take_profit": round(tp,6),
                     "stop_loss": round(sl,6),
                     "score": score,
-                    "volatility": round(atr,6)
+                    "leverage": leverage,
+                    "interval": interval,
+                    "logic": "EMA21/50 + RSI Momentum + ATR Duration Scaling"
                 })
 
         except:
@@ -162,14 +185,13 @@ def scan():
     results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
     return jsonify({
-        "timestamp": int(time.time()),
-        "results": results
+        "results": results,
+        "interval": interval,
+        "duration_minutes": custom_minutes,
+        "timestamp": int(time.time())
     })
 
-# =========================
-# RUN
 # =========================
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
-        
