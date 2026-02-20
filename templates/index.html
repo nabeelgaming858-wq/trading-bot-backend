@@ -1,8 +1,8 @@
-<!DOCTYPE html>
+    <!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quant Pro Trading Engine</title>
+<title>Quant Trading Dashboard</title>
 
 <style>
 body{
@@ -22,153 +22,153 @@ header{
 
 .controls{
     display:flex;
-    flex-wrap:wrap;
-    gap:10px;
     justify-content:center;
+    gap:10px;
     padding:20px;
 }
 
-button, select, input{
+button{
     padding:10px 14px;
     border-radius:8px;
     border:none;
     font-size:14px;
-}
-
-button{
+    cursor:pointer;
     background:#16a34a;
     color:white;
-    cursor:pointer;
 }
 
 button:hover{
     background:#15803d;
 }
 
-.mode-btn{
-    background:#1f2937;
-}
-
-.mode-btn.active{
-    background:#2563eb;
-}
-
-.grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+.stats{
+    display:flex;
+    justify-content:center;
     gap:20px;
     padding:20px;
+    flex-wrap:wrap;
 }
 
-.card{
+.stat-box{
     background:#111827;
+    padding:15px;
+    border-radius:10px;
+    min-width:120px;
+    text-align:center;
+}
+
+.table-container{
     padding:20px;
-    border-radius:14px;
-    border:1px solid #1f2937;
+    overflow-x:auto;
 }
 
-.asset{
-    font-size:18px;
-    font-weight:bold;
-    margin-bottom:10px;
+table{
+    width:100%;
+    border-collapse:collapse;
+    background:#111827;
 }
 
-.buy{color:#22c55e;}
-.sell{color:#ef4444;}
-
-.meta{
-    font-size:13px;
-    opacity:0.8;
-    margin-top:10px;
+th, td{
+    padding:10px;
+    border-bottom:1px solid #1f2937;
+    text-align:center;
 }
+
+.tp{ color:#22c55e; }
+.sl{ color:#ef4444; }
+.open{ color:#facc15; }
 
 .loading{
     text-align:center;
-    padding:40px;
+    padding:20px;
 }
 </style>
 </head>
 
 <body>
 
-<header>Quant Pro Trading Engine</header>
+<header>Quant Trading Monitoring Dashboard</header>
 
 <div class="controls">
-
-<select id="market">
-<option value="crypto">Crypto</option>
-</select>
-
-<button class="mode-btn active" onclick="setMode('scalp', this)">Scalp</button>
-<button class="mode-btn" onclick="setMode('intraday', this)">Intraday</button>
-<button class="mode-btn" onclick="setMode('swing', this)">Swing</button>
-
-<input type="number" id="customMinutes" placeholder="Custom Minutes" min="1" style="width:140px;">
-
-<button onclick="generate()">Generate Trades</button>
-
+    <button onclick="generateTrades()">Generate Trades</button>
+    <button onclick="monitorTrades()">Monitor Trades</button>
 </div>
 
-<div id="results" class="grid"></div>
+<div class="stats">
+    <div class="stat-box">Total Trades<br><span id="total">0</span></div>
+    <div class="stat-box">TP Hits<br><span id="tp">0</span></div>
+    <div class="stat-box">SL Hits<br><span id="sl">0</span></div>
+    <div class="stat-box">Open Trades<br><span id="open">0</span></div>
+    <div class="stat-box">Win Rate<br><span id="winrate">0%</span></div>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Asset</th>
+                <th>Direction</th>
+                <th>Entry</th>
+                <th>TP</th>
+                <th>SL</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="tradeTable"></tbody>
+    </table>
+</div>
 
 <script>
 
-let tradeType = "scalp";
+async function generateTrades(){
+    document.getElementById("tradeTable").innerHTML =
+        "<tr><td colspan='6'>Generating trades...</td></tr>";
 
-function setMode(mode, element){
-    tradeType = mode;
-    document.querySelectorAll(".mode-btn").forEach(btn=>btn.classList.remove("active"));
-    element.classList.add("active");
+    await fetch('/api/scan');
+    await monitorTrades();
 }
 
-async function generate(){
+async function monitorTrades(){
 
-    const market = document.getElementById("market").value;
-    const customMinutes = document.getElementById("customMinutes").value || 15;
-    const container = document.getElementById("results");
+    const res = await fetch('/api/monitor');
+    const data = await res.json();
 
-    container.innerHTML = "<div class='loading'>Running Quant Analysis...</div>";
+    document.getElementById("total").innerText = data.total_trades;
+    document.getElementById("tp").innerText = data.tp_hits;
+    document.getElementById("sl").innerText = data.sl_hits;
+    document.getElementById("open").innerText = data.open_trades;
 
-    try{
-        const res = await fetch(`/api/scan?market=${market}&type=${tradeType}&minutes=${customMinutes}`);
-        const data = await res.json();
-
-        if(!data.results || data.results.length === 0){
-            container.innerHTML = "<div class='loading'>No high probability trades found.</div>";
-            return;
-        }
-
-        let html = "";
-
-        data.results.forEach(t=>{
-
-            let dirClass = t.direction === "BUY" ? "buy" : "sell";
-
-            html += `
-            <div class="card">
-                <div class="asset">${t.asset}</div>
-                Direction: <span class="${dirClass}">${t.direction}</span><br>
-                Entry: ${t.entry}<br>
-                Take Profit: ${t.take_profit}<br>
-                Stop Loss: ${t.stop_loss}<br>
-                Leverage: ${t.leverage}x<br>
-                Timeframe Used: ${t.interval}<br>
-                <div class="meta">
-                    Score: ${t.score} / 7<br>
-                    Logic: ${t.logic}
-                </div>
-            </div>
-            `;
-        });
-
-        container.innerHTML = html;
-
-    }catch(e){
-        container.innerHTML = "<div class='loading'>Error loading analysis.</div>";
+    let winrate = 0;
+    if(data.total_trades > 0){
+        winrate = ((data.tp_hits / data.total_trades) * 100).toFixed(1);
     }
+
+    document.getElementById("winrate").innerText = winrate + "%";
+
+    let rows = "";
+
+    data.trades.forEach(trade => {
+
+        let statusClass = "open";
+        if(trade.status === "TP HIT") statusClass = "tp";
+        if(trade.status === "SL HIT") statusClass = "sl";
+
+        rows += `
+        <tr>
+            <td>${trade.asset}</td>
+            <td>${trade.direction}</td>
+            <td>${trade.entry.toFixed(4)}</td>
+            <td>${trade.tp.toFixed(4)}</td>
+            <td>${trade.sl.toFixed(4)}</td>
+            <td class="${statusClass}">${trade.status}</td>
+        </tr>
+        `;
+    });
+
+    document.getElementById("tradeTable").innerHTML = rows;
 }
 
 </script>
 
 </body>
-</html>
+    </html>
