@@ -3,13 +3,8 @@ import requests
 import pandas as pd
 import numpy as np
 import time
-import math
 
 app = Flask(__name__, template_folder="templates")
-
-# =========================
-# CONFIG
-# =========================
 
 CRYPTO_ASSETS = [
 "BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
@@ -17,12 +12,6 @@ CRYPTO_ASSETS = [
 "LTCUSDT","TRXUSDT","LINKUSDT","ATOMUSDT","ETCUSDT",
 "XLMUSDT","ICPUSDT","FILUSDT","APTUSDT","ARBUSDT",
 "OPUSDT","NEARUSDT","SANDUSDT","AAVEUSDT","EOSUSDT"
-]
-
-FOREX_PAIRS = [
-"EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD",
-"USDCHF","NZDUSD","EURGBP","EURJPY","GBPJPY",
-"AUDJPY","EURAUD","GBPAUD","EURCAD","GBPCAD"
 ]
 
 # =========================
@@ -47,54 +36,56 @@ def calculate_indicators(df):
     return df
 
 # =========================
-# TIMEFRAME MAPPING
+# TIMEFRAME LOGIC
 # =========================
 
-def map_duration(duration_type, custom_minutes):
+def timeframe_map(type, minutes):
 
-    if duration_type == "scalp":
-        return "5m"
-    if duration_type == "intraday":
-        return "15m"
-    if duration_type == "swing":
-        return "1h"
-    if duration_type == "custom":
-        if custom_minutes <= 15:
-            return "5m"
-        if custom_minutes <= 60:
-            return "15m"
-        if custom_minutes <= 240:
-            return "1h"
-        return "4h"
+    if type == "scalp":
+        return "5m","15m"
+    if type == "intraday":
+        return "15m","1h"
+    if type == "swing":
+        return "1h","4h"
+    if type == "custom":
+        if minutes <= 15:
+            return "5m","15m"
+        if minutes <= 60:
+            return "15m","1h"
+        if minutes <= 240:
+            return "1h","4h"
+        return "4h","1d"
 
 # =========================
 # DATA FETCH
 # =========================
 
-def get_crypto_ohlc(symbol, interval):
+def get_ohlc(symbol, interval):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit=100"
     r = requests.get(url, timeout=5)
     data = r.json()
+
     df = pd.DataFrame(data, columns=[
         "open_time","open","high","low","close","volume",
         "close_time","qav","trades","tbav","tqav","ignore"
     ])
+
     df["close"] = df["close"].astype(float)
     df["high"] = df["high"].astype(float)
     df["low"] = df["low"].astype(float)
+
     return df
 
 # =========================
 # SCORING
 # =========================
 
-def score_asset(df):
+def evaluate(df):
 
     latest = df.iloc[-1]
     score = 0
     direction = None
 
-    # Trend
     if latest["EMA21"] > latest["EMA50"]:
         score += 2
         direction = "BUY"
@@ -102,18 +93,12 @@ def score_asset(df):
         score += 2
         direction = "SELL"
 
-    # Momentum
     if direction == "BUY" and latest["RSI"] > 55:
         score += 2
     if direction == "SELL" and latest["RSI"] < 45:
         score += 2
 
-    # Volatility
     if latest["ATR"] > df["ATR"].mean():
-        score += 1
-
-    # Stability
-    if 35 < latest["RSI"] < 65:
         score += 1
 
     return score, direction
@@ -129,55 +114,56 @@ def home():
 @app.route("/api/scan")
 def scan():
 
-    market = request.args.get("market","crypto")
-    duration_type = request.args.get("type","scalp")
-    custom_minutes = int(request.args.get("minutes","15"))
+    trade_type = request.args.get("type","scalp")
+    minutes = int(request.args.get("minutes","15"))
 
-    interval = map_duration(duration_type, custom_minutes)
+    primary_tf, confirm_tf = timeframe_map(trade_type, minutes)
 
     results = []
-    assets = CRYPTO_ASSETS if market=="crypto" else CRYPTO_ASSETS
 
-    for asset in assets[:12]:
+    for asset in CRYPTO_ASSETS[:15]:
 
         try:
-            df = get_crypto_ohlc(asset, interval)
-            df = calculate_indicators(df)
+            df1 = calculate_indicators(get_ohlc(asset, primary_tf))
+            df2 = calculate_indicators(get_ohlc(asset, confirm_tf))
 
-            score, direction = score_asset(df)
+            score1, dir1 = evaluate(df1)
+            score2, dir2 = evaluate(df2)
 
-            if score >= 6:
+            if dir1 and dir1 == dir2:
 
-                latest = df.iloc[-1]
-                price = latest["close"]
-                atr = latest["ATR"]
+                combined_score = score1 + score2
 
-                # Duration scaling factor
-                duration_factor = max(custom_minutes/30, 1)
+                if combined_score >= 7:
 
-                tp_distance = atr * 1.8 * duration_factor
-                sl_distance = atr * 1.2 * duration_factor
+                    price = df1.iloc[-1]["close"]
+                    atr = df1.iloc[-1]["ATR"]
 
-                if direction == "BUY":
-                    tp = price + tp_distance
-                    sl = price - sl_distance
-                else:
-                    tp = price - tp_distance
-                    sl = price + sl_distance
+                    duration_factor = max(minutes/30,1)
 
-                leverage = min(max(int(10 / (atr/price)), 3), 20)
+                    tp_distance = atr * 2 * duration_factor
+                    sl_distance = atr * 1.3 * duration_factor
 
-                results.append({
-                    "asset": asset,
-                    "direction": direction,
-                    "entry": round(price,6),
-                    "take_profit": round(tp,6),
-                    "stop_loss": round(sl,6),
-                    "score": score,
-                    "leverage": leverage,
-                    "interval": interval,
-                    "logic": "EMA21/50 + RSI Momentum + ATR Duration Scaling"
-                })
+                    if dir1 == "BUY":
+                        tp = price + tp_distance
+                        sl = price - sl_distance
+                    else:
+                        tp = price - tp_distance
+                        sl = price + sl_distance
+
+                    leverage = min(max(int(12/(atr/price)),3),25)
+
+                    results.append({
+                        "asset": asset,
+                        "direction": dir1,
+                        "entry": round(price,6),
+                        "take_profit": round(tp,6),
+                        "stop_loss": round(sl,6),
+                        "score": combined_score,
+                        "primary_tf": primary_tf,
+                        "confirm_tf": confirm_tf,
+                        "leverage": leverage
+                    })
 
         except:
             continue
@@ -186,12 +172,8 @@ def scan():
 
     return jsonify({
         "results": results,
-        "interval": interval,
-        "duration_minutes": custom_minutes,
         "timestamp": int(time.time())
     })
-
-# =========================
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
