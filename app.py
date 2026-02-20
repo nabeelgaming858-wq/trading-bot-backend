@@ -3,23 +3,23 @@ import requests
 import pandas as pd
 import numpy as np
 import time
+import uuid
 
 app = Flask(__name__, template_folder="templates")
 
 CRYPTO_ASSETS = [
 "BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
 "SOLUSDT","DOGEUSDT","DOTUSDT","MATICUSDT","AVAXUSDT",
-"LTCUSDT","TRXUSDT","LINKUSDT","ATOMUSDT","ETCUSDT",
-"XLMUSDT","ICPUSDT","FILUSDT","APTUSDT","ARBUSDT",
-"OPUSDT","NEARUSDT","SANDUSDT","AAVEUSDT","EOSUSDT"
+"LTCUSDT","TRXUSDT","LINKUSDT","ATOMUSDT","ETCUSDT"
 ]
+
+TRADE_LOG = []
 
 # =========================
 # INDICATORS
 # =========================
 
 def calculate_indicators(df):
-
     df["EMA21"] = df["close"].ewm(span=21).mean()
     df["EMA50"] = df["close"].ewm(span=50).mean()
 
@@ -30,38 +30,12 @@ def calculate_indicators(df):
     avg_loss = loss.rolling(14).mean()
     rs = avg_gain / avg_loss
     df["RSI"] = 100 - (100 / (1 + rs))
-
     df["ATR"] = (df["high"] - df["low"]).rolling(14).mean()
 
     return df
 
-# =========================
-# TIMEFRAME MAP
-# =========================
-
-def timeframe_map(type, minutes):
-
-    if type == "scalp":
-        return "5m","15m"
-    if type == "intraday":
-        return "15m","1h"
-    if type == "swing":
-        return "1h","4h"
-    if type == "custom":
-        if minutes <= 15:
-            return "5m","15m"
-        if minutes <= 60:
-            return "15m","1h"
-        if minutes <= 240:
-            return "1h","4h"
-        return "4h","1d"
-
-# =========================
-# DATA FETCH
-# =========================
-
-def get_ohlc(symbol, interval):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit=100"
+def get_ohlc(symbol):
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
     r = requests.get(url, timeout=5)
     data = r.json()
 
@@ -77,51 +51,7 @@ def get_ohlc(symbol, interval):
     return df
 
 # =========================
-# EVALUATION
-# =========================
-
-def evaluate(df):
-
-    latest = df.iloc[-1]
-    score = 0
-    direction = None
-
-    if latest["EMA21"] > latest["EMA50"]:
-        score += 2
-        direction = "BUY"
-    elif latest["EMA21"] < latest["EMA50"]:
-        score += 2
-        direction = "SELL"
-
-    if direction == "BUY" and latest["RSI"] > 55:
-        score += 2
-    if direction == "SELL" and latest["RSI"] < 45:
-        score += 2
-
-    if latest["ATR"] > df["ATR"].mean():
-        score += 1
-
-    return score, direction
-
-# =========================
-# VOLATILITY CHECK
-# =========================
-
-def volatility_status(df):
-
-    current_atr = df.iloc[-1]["ATR"]
-    avg_atr = df["ATR"].mean()
-
-    ratio = current_atr / avg_atr
-
-    if ratio > 1.8:
-        return "EXTREME"
-    if ratio > 1.3:
-        return "HIGH"
-    return "NORMAL"
-
-# =========================
-# ROUTE
+# ROUTES
 # =========================
 
 @app.route("/")
@@ -131,74 +61,73 @@ def home():
 @app.route("/api/scan")
 def scan():
 
-    trade_type = request.args.get("type","scalp")
-    minutes = int(request.args.get("minutes","15"))
-
-    primary_tf, confirm_tf = timeframe_map(trade_type, minutes)
-
     results = []
 
-    for asset in CRYPTO_ASSETS[:15]:
+    for asset in CRYPTO_ASSETS[:8]:
 
         try:
-            df1 = calculate_indicators(get_ohlc(asset, primary_tf))
-            df2 = calculate_indicators(get_ohlc(asset, confirm_tf))
+            df = calculate_indicators(get_ohlc(asset))
+            latest = df.iloc[-1]
 
-            score1, dir1 = evaluate(df1)
-            score2, dir2 = evaluate(df2)
+            if latest["EMA21"] > latest["EMA50"] and latest["RSI"] > 55:
 
-            if dir1 and dir1 == dir2:
+                price = latest["close"]
+                atr = latest["ATR"]
 
-                combined_score = score1 + score2
+                tp = price + (2 * atr)
+                sl = price - (1.5 * atr)
 
-                if combined_score >= 7:
+                trade = {
+                    "id": str(uuid.uuid4()),
+                    "asset": asset,
+                    "direction": "BUY",
+                    "entry": price,
+                    "tp": tp,
+                    "sl": sl,
+                    "status": "OPEN",
+                    "created_at": time.time()
+                }
 
-                    vol_state = volatility_status(df1)
-
-                    if vol_state == "EXTREME":
-                        continue
-
-                    price = df1.iloc[-1]["close"]
-                    atr = df1.iloc[-1]["ATR"]
-
-                    duration_factor = max(minutes/30,1)
-
-                    tp_distance = atr * 2 * duration_factor
-                    sl_distance = atr * 1.3 * duration_factor
-
-                    if dir1 == "BUY":
-                        tp = price + tp_distance
-                        sl = price - sl_distance
-                    else:
-                        tp = price - tp_distance
-                        sl = price + sl_distance
-
-                    base_leverage = min(max(int(12/(atr/price)),3),25)
-
-                    if vol_state == "HIGH":
-                        base_leverage = max(base_leverage - 5, 3)
-
-                    results.append({
-                        "asset": asset,
-                        "direction": dir1,
-                        "entry": round(price,6),
-                        "take_profit": round(tp,6),
-                        "stop_loss": round(sl,6),
-                        "score": combined_score,
-                        "primary_tf": primary_tf,
-                        "confirm_tf": confirm_tf,
-                        "leverage": base_leverage,
-                        "volatility": vol_state
-                    })
+                TRADE_LOG.append(trade)
+                results.append(trade)
 
         except:
             continue
 
-    results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
+    return jsonify({"results": results})
+
+# =========================
+# MONITOR TRADES
+# =========================
+
+@app.route("/api/monitor")
+def monitor():
+
+    for trade in TRADE_LOG:
+
+        if trade["status"] != "OPEN":
+            continue
+
+        try:
+            url = f"https://api.binance.com/api/v3/ticker/price?symbol={trade['asset']}"
+            r = requests.get(url, timeout=5)
+            current_price = float(r.json()["price"])
+
+            if current_price >= trade["tp"]:
+                trade["status"] = "TP HIT"
+
+            elif current_price <= trade["sl"]:
+                trade["status"] = "SL HIT"
+
+        except:
+            continue
 
     return jsonify({
-        "results": results,
-        "timestamp": int(time.time())
+        "total_trades": len(TRADE_LOG),
+        "tp_hits": len([t for t in TRADE_LOG if t["status"]=="TP HIT"]),
+        "sl_hits": len([t for t in TRADE_LOG if t["status"]=="SL HIT"]),
+        "open_trades": len([t for t in TRADE_LOG if t["status"]=="OPEN"]),
+        "trades": TRADE_LOG
     })
 
 if __name__ == "__main__":
