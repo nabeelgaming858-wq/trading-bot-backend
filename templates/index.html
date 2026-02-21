@@ -1,174 +1,206 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quant Trading Dashboard</title>
+<title>Quantum Alpha Engine</title>
 
 <style>
+
 body{
     margin:0;
-    font-family:Arial, sans-serif;
-    background:#0b1220;
+    font-family:'Segoe UI',sans-serif;
+    background: linear-gradient(135deg,#0f172a,#020617);
     color:white;
 }
 
 header{
-    background:#111827;
     padding:20px;
     text-align:center;
-    font-size:22px;
+    font-size:26px;
     font-weight:bold;
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    border-bottom:1px solid rgba(255,255,255,0.1);
 }
 
 .controls{
     display:flex;
+    gap:15px;
     justify-content:center;
-    gap:10px;
+    flex-wrap:wrap;
     padding:20px;
 }
 
-button{
-    padding:10px 14px;
-    border-radius:8px;
+select,input,button{
+    padding:10px 15px;
+    border-radius:10px;
     border:none;
     font-size:14px;
-    cursor:pointer;
-    background:#16a34a;
+}
+
+select,input{
+    background: rgba(255,255,255,0.08);
     color:white;
 }
 
-button:hover{
-    background:#15803d;
+button{
+    background: linear-gradient(45deg,#06b6d4,#3b82f6);
+    color:white;
+    cursor:pointer;
+    transition:0.3s;
 }
 
-.stats{
-    display:flex;
-    justify-content:center;
+button:hover{
+    transform:scale(1.05);
+}
+
+.grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
     gap:20px;
     padding:20px;
-    flex-wrap:wrap;
 }
 
-.stat-box{
-    background:#111827;
-    padding:15px;
+.card{
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(15px);
+    border-radius:15px;
+    padding:20px;
+    border:1px solid rgba(255,255,255,0.1);
+}
+
+.section-title{
+    font-weight:bold;
+    margin-bottom:10px;
+    opacity:0.85;
+}
+
+.prob-bar{
+    height:10px;
     border-radius:10px;
-    min-width:120px;
+    background:#1e293b;
+    overflow:hidden;
+    margin-top:6px;
+}
+
+.prob-fill{
+    height:100%;
+    background: linear-gradient(90deg,#10b981,#06b6d4);
+}
+
+.badge{
+    padding:6px 12px;
+    border-radius:10px;
+    font-weight:bold;
+    font-size:13px;
+}
+
+.Platinum{background:#e5e4e2;color:black;}
+.Gold{background:#facc15;color:black;}
+.Silver{background:#94a3b8;color:black;}
+.Bronze{background:#b45309;color:white;}
+
+.dashboard{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:15px;
+}
+
+.metric{
+    background: rgba(255,255,255,0.05);
+    padding:15px;
+    border-radius:12px;
     text-align:center;
 }
 
-.table-container{
-    padding:20px;
-    overflow-x:auto;
+.metric h3{
+    margin:5px 0;
 }
 
-table{
-    width:100%;
-    border-collapse:collapse;
-    background:#111827;
-}
-
-th, td{
-    padding:10px;
-    border-bottom:1px solid #1f2937;
-    text-align:center;
-}
-
-.tp{ color:#22c55e; }
-.sl{ color:#ef4444; }
-.open{ color:#facc15; }
-
-.loading{
-    text-align:center;
-    padding:20px;
-}
 </style>
 </head>
 
 <body>
 
-<header>Quant Trading Monitoring Dashboard</header>
+<header>Quantum Alpha Engine</header>
 
 <div class="controls">
-    <button onclick="generateTrades()">Generate Trades</button>
-    <button onclick="monitorTrades()">Monitor Trades</button>
+<input type="number" id="duration" value="30" placeholder="Duration (min)">
+<button onclick="generate()">Generate Trades</button>
+<button onclick="loadAnalytics()">Analytics</button>
 </div>
 
-<div class="stats">
-    <div class="stat-box">Total Trades<br><span id="total">0</span></div>
-    <div class="stat-box">TP Hits<br><span id="tp">0</span></div>
-    <div class="stat-box">SL Hits<br><span id="sl">0</span></div>
-    <div class="stat-box">Open Trades<br><span id="open">0</span></div>
-    <div class="stat-box">Win Rate<br><span id="winrate">0%</span></div>
-</div>
+<div id="results" class="grid"></div>
 
-<div class="table-container">
-    <table>
-        <thead>
-            <tr>
-                <th>Asset</th>
-                <th>Direction</th>
-                <th>Entry</th>
-                <th>TP</th>
-                <th>SL</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody id="tradeTable"></tbody>
-    </table>
-</div>
+<div id="analyticsPanel" style="padding:20px;"></div>
 
 <script>
 
-async function generateTrades(){
-    document.getElementById("tradeTable").innerHTML =
-        "<tr><td colspan='6'>Generating trades...</td></tr>";
-
-    await fetch('/api/scan');
-    await monitorTrades();
-}
-
-async function monitorTrades(){
-
-    const res = await fetch('/api/monitor');
+async function generate(){
+    const duration = document.getElementById("duration").value;
+    const res = await fetch(`/api/scan?duration=${duration}`);
     const data = await res.json();
 
-    document.getElementById("total").innerText = data.total_trades;
-    document.getElementById("tp").innerText = data.tp_hits;
-    document.getElementById("sl").innerText = data.sl_hits;
-    document.getElementById("open").innerText = data.open_trades;
+    const container = document.getElementById("results");
+    container.innerHTML="";
 
-    let winrate = 0;
-    if(data.total_trades > 0){
-        winrate = ((data.tp_hits / data.total_trades) * 100).toFixed(1);
-    }
+    data.results.forEach(trade=>{
+        const card = document.createElement("div");
+        card.className="card";
 
-    document.getElementById("winrate").innerText = winrate + "%";
-
-    let rows = "";
-
-    data.trades.forEach(trade => {
-
-        let statusClass = "open";
-        if(trade.status === "TP HIT") statusClass = "tp";
-        if(trade.status === "SL HIT") statusClass = "sl";
-
-        rows += `
-        <tr>
-            <td>${trade.asset}</td>
-            <td>${trade.direction}</td>
-            <td>${trade.entry.toFixed(4)}</td>
-            <td>${trade.tp.toFixed(4)}</td>
-            <td>${trade.sl.toFixed(4)}</td>
-            <td class="${statusClass}">${trade.status}</td>
-        </tr>
+        card.innerHTML = `
+        <div class="section-title">${trade.asset}</div>
+        Direction: ${trade.direction}<br>
+        Entry: ${trade.entry}<br>
+        TP: ${trade.tp}<br>
+        SL: ${trade.sl}<br>
+        Regime: ${trade.regime}<br><br>
+        Probability: ${trade.probability}%
+        <div class="prob-bar">
+            <div class="prob-fill" style="width:${trade.probability}%"></div>
+        </div>
         `;
+        container.appendChild(card);
     });
+}
 
-    document.getElementById("tradeTable").innerHTML = rows;
+async function loadAnalytics(){
+    const res = await fetch(`/api/analytics`);
+    const data = await res.json();
+
+    document.getElementById("analyticsPanel").innerHTML = `
+    <div class="card">
+        <div class="section-title">Performance Analytics Dashboard</div>
+        <div class="dashboard">
+            <div class="metric">
+                <div>Winrate</div>
+                <h3>${data.winrate}%</h3>
+            </div>
+            <div class="metric">
+                <div>Average R:R</div>
+                <h3>${data.avg_rr}</h3>
+            </div>
+            <div class="metric">
+                <div>Expectancy</div>
+                <h3>${data.expectancy}</h3>
+            </div>
+            <div class="metric">
+                <div>Edge Score</div>
+                <h3>${data.edge_score}%</h3>
+                <div class="prob-bar">
+                    <div class="prob-fill" style="width:${data.edge_score}%"></div>
+                </div>
+            </div>
+        </div>
+        <br>
+        <div class="badge ${data.edge_grade}">
+            ${data.edge_grade} Edge
+        </div>
+    </div>
+    `;
 }
 
 </script>
 
 </body>
-    </html>
+</html>
