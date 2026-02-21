@@ -2,31 +2,190 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quantum Institutional Engine</title>
+<title>Quantum X Terminal</title>
+
 <style>
-body{margin:0;font-family:Arial;background:#0f172a;color:white}
-header{padding:20px;text-align:center;font-size:24px;background:#111827}
-button,input{padding:8px;border-radius:6px;border:none;margin:5px}
-.card{background:#1e293b;padding:15px;border-radius:10px;margin:10px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+
+body{
+    margin:0;
+    font-family:'Segoe UI',sans-serif;
+    background: linear-gradient(135deg,#0f172a,#020617);
+    color:white;
+}
+
+header{
+    padding:20px;
+    text-align:center;
+    font-size:28px;
+    font-weight:600;
+    background: linear-gradient(90deg,#0ea5e9,#7c3aed);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+}
+
+.section{
+    padding:15px 20px;
+}
+
+.controls button,
+.controls select,
+.controls input{
+    padding:8px 14px;
+    border-radius:10px;
+    border:none;
+    margin:4px;
+    font-size:13px;
+}
+
+button{
+    cursor:pointer;
+    background:linear-gradient(45deg,#06b6d4,#3b82f6);
+    color:white;
+    transition:0.3s;
+}
+
+button:hover{
+    transform:scale(1.05);
+    box-shadow:0 0 15px #3b82f6;
+}
+
+select,input{
+    background:rgba(255,255,255,0.08);
+    color:white;
+}
+
+.grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:20px;
+    padding:20px;
+}
+
+.card{
+    background:rgba(255,255,255,0.06);
+    backdrop-filter:blur(15px);
+    border-radius:15px;
+    padding:18px;
+    border:1px solid rgba(255,255,255,0.1);
+}
+
+.heat-bull{
+    border:2px solid #10b981;
+    box-shadow:0 0 12px #10b981;
+}
+
+.heat-bear{
+    border:2px solid #ef4444;
+    box-shadow:0 0 12px #ef4444;
+}
+
+.heat-neutral{
+    border:2px solid #facc15;
+    box-shadow:0 0 12px #facc15;
+}
+
+.dashboard{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:15px;
+}
+
+.metric{
+    background:rgba(255,255,255,0.05);
+    padding:15px;
+    border-radius:12px;
+    text-align:center;
+}
+
+.badge{
+    padding:6px 12px;
+    border-radius:10px;
+    font-weight:bold;
+}
+
+.Platinum{background:#e5e4e2;color:black;}
+.Gold{background:#facc15;color:black;}
+.Silver{background:#94a3b8;color:black;}
+.Bronze{background:#b45309;color:white;}
+
 </style>
 </head>
+
 <body>
 
-<header>Quantum Institutional Engine</header>
+<header>Quantum X Institutional Terminal</header>
 
-<div style="padding:15px;">
-<input type="number" id="account" value="1000">
-<input type="number" id="risk" value="1">
-<button onclick="generate()">Generate</button>
-<button onclick="heatmap()">Heatmap</button>
-<button onclick="correlation()">Correlation</button>
-<button onclick="analytics()">Analytics</button>
+<div class="section controls">
+
+<!-- MARKET MODE -->
+<button onclick="setMarket('crypto')">Crypto</button>
+<button onclick="setMarket('forex')">Forex</button>
+<button onclick="setMarket('all')">Whole Market</button>
+
+<select id="singleAsset" style="display:none;">
+<option value="BTCUSDT">BTCUSDT</option>
+<option value="ETHUSDT">ETHUSDT</option>
+<option value="BNBUSDT">BNBUSDT</option>
+</select>
+<button onclick="enableSingle()">Single Asset</button>
+
+<br><br>
+
+<!-- TRADE STYLE -->
+<button onclick="setStyle('scalp')">Scalp</button>
+<button onclick="setStyle('intraday')">Intraday</button>
+<button onclick="setStyle('swing')">Swing</button>
+
+<select id="durationUnit">
+<option value="seconds">Seconds</option>
+<option value="minutes" selected>Minutes</option>
+<option value="hours">Hours</option>
+<option value="days">Days</option>
+</select>
+
+<input type="number" id="durationValue" value="30" style="width:80px;">
+
+<br><br>
+
+<input type="number" id="account" value="1000" placeholder="Account Balance">
+<input type="number" id="risk" value="1" step="0.1" placeholder="Risk %">
+
+<br><br>
+
+<button onclick="generate()">Generate Trades</button>
+<button onclick="toggleAuto()">Auto Scan</button>
+<input type="number" id="autoInterval" value="60" style="width:60px;"> sec
+
+<button onclick="loadHeatmap()">Heatmap</button>
+<button onclick="loadAnalytics()">Dashboard</button>
+
 </div>
 
 <div id="output" class="grid"></div>
 
+<div id="dashboard" class="section"></div>
+
 <script>
+
+let currentMarket = "crypto";
+let currentStyle = "scalp";
+let autoTimer = null;
+
+function setMarket(m){
+    currentMarket = m;
+}
+
+function setStyle(s){
+    currentStyle = s;
+
+    if(s==="scalp") document.getElementById("durationValue").value = 15;
+    if(s==="intraday") document.getElementById("durationValue").value = 240;
+    if(s==="swing") document.getElementById("durationValue").value = 1440;
+}
+
+function enableSingle(){
+    document.getElementById("singleAsset").style.display="inline-block";
+}
 
 function notify(msg){
     if(Notification.permission==="granted"){
@@ -39,21 +198,25 @@ if(Notification.permission!=="granted"){
 }
 
 async function generate(){
-    const account=document.getElementById("account").value;
-    const risk=document.getElementById("risk").value;
 
-    const res=await fetch(`/api/scan?account=${account}&risk=${risk}`);
-    const data=await res.json();
+    const account = document.getElementById("account").value;
+    const risk = document.getElementById("risk").value;
+    const duration = document.getElementById("durationValue").value;
 
-    const container=document.getElementById("output");
+    const res = await fetch(`/api/scan?account=${account}&risk=${risk}&duration=${duration}`);
+    const data = await res.json();
+
+    const container = document.getElementById("output");
     container.innerHTML="";
 
     if(data.results){
         data.results.forEach(t=>{
             notify("New Trade: "+t.asset+" "+t.direction);
+
             container.innerHTML+=`
             <div class="card">
-            ${t.asset} ${t.direction}<br>
+            <h3>${t.asset}</h3>
+            <b>${t.direction}</b><br><br>
             Entry: ${t.entry}<br>
             TP: ${t.tp}<br>
             SL: ${t.sl}<br>
@@ -61,53 +224,67 @@ async function generate(){
             </div>`;
         });
     } else {
-        container.innerHTML=data.message;
+        container.innerHTML="<div class='card'>"+data.message+"</div>";
     }
 }
 
-async function heatmap(){
-    const res=await fetch('/api/heatmap');
-    const data=await res.json();
-    const container=document.getElementById("output");
+function toggleAuto(){
+    if(autoTimer){
+        clearInterval(autoTimer);
+        autoTimer=null;
+        alert("Auto Scan Stopped");
+    }else{
+        const interval = document.getElementById("autoInterval").value * 1000;
+        autoTimer = setInterval(generate, interval);
+        alert("Auto Scan Started");
+    }
+}
+
+async function loadHeatmap(){
+
+    const res = await fetch('/api/heatmap');
+    const data = await res.json();
+
+    const container = document.getElementById("output");
     container.innerHTML="";
+
     data.heatmap.forEach(h=>{
+
+        let cls = "heat-neutral";
+        if(h.status==="BULLISH") cls="heat-bull";
+        if(h.status==="BEARISH") cls="heat-bear";
+
         container.innerHTML+=`
-        <div class="card">
-        ${h.asset} - ${h.status}
+        <div class="card ${cls}">
+        <h3>${h.asset}</h3>
+        ${h.status}
         </div>`;
     });
 }
 
-async function correlation(){
-    const res=await fetch('/api/correlation');
-    const data=await res.json();
-    const container=document.getElementById("output");
-    container.innerHTML="<div class='card'>Correlation Matrix</div>";
-    for(let a in data.matrix){
-        for(let b in data.matrix[a]){
-            container.innerHTML+=`
-            <div class="card">
-            ${a} vs ${b}: ${data.matrix[a][b]}
-            </div>`;
-        }
-    }
-}
+async function loadAnalytics(){
 
-async function analytics(){
-    const res=await fetch('/api/analytics');
-    const data=await res.json();
-    const container=document.getElementById("output");
-    container.innerHTML=`
+    const res = await fetch('/api/analytics');
+    const data = await res.json();
+
+    document.getElementById("dashboard").innerHTML = `
     <div class="card">
-    Winrate: ${data.winrate}%<br>
-    Expectancy: ${data.expectancy}<br>
-    Avg RR: ${data.avg_rr}<br>
-    Edge Score: ${data.edge_score}%<br>
-    Grade: ${data.edge_grade}
-    </div>`;
+    <h3>Performance Dashboard</h3>
+    <div class="dashboard">
+        <div class="metric">Winrate<br><b>${data.winrate}%</b></div>
+        <div class="metric">Expectancy<br><b>${data.expectancy}</b></div>
+        <div class="metric">Avg R:R<br><b>${data.avg_rr}</b></div>
+        <div class="metric">Edge Score<br><b>${data.edge_score}%</b></div>
+    </div>
+    <br>
+    <span class="badge ${data.edge_grade}">
+        ${data.edge_grade}
+    </span>
+    </div>
+    `;
 }
 
 </script>
 
 </body>
-</html>
+    </html>
