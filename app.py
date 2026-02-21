@@ -10,9 +10,6 @@ app = Flask(__name__, template_folder="templates")
 CRYPTO_ASSETS = ["BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT"]
 
 trade_history = []
-trade_counter = 0
-MAX_TRADES_PER_SESSION = 3
-
 # =========================
 # DATA
 # =========================
