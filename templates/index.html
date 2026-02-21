@@ -2,202 +2,109 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quantum Alpha Engine</title>
-
+<title>Quantum Institutional Engine</title>
 <style>
-
-body{
-    margin:0;
-    font-family:'Segoe UI',sans-serif;
-    background: linear-gradient(135deg,#0f172a,#020617);
-    color:white;
-}
-
-header{
-    padding:20px;
-    text-align:center;
-    font-size:26px;
-    font-weight:bold;
-    background: rgba(255,255,255,0.05);
-    backdrop-filter: blur(10px);
-    border-bottom:1px solid rgba(255,255,255,0.1);
-}
-
-.controls{
-    display:flex;
-    gap:15px;
-    justify-content:center;
-    flex-wrap:wrap;
-    padding:20px;
-}
-
-select,input,button{
-    padding:10px 15px;
-    border-radius:10px;
-    border:none;
-    font-size:14px;
-}
-
-select,input{
-    background: rgba(255,255,255,0.08);
-    color:white;
-}
-
-button{
-    background: linear-gradient(45deg,#06b6d4,#3b82f6);
-    color:white;
-    cursor:pointer;
-    transition:0.3s;
-}
-
-button:hover{
-    transform:scale(1.05);
-}
-
-.grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
-    gap:20px;
-    padding:20px;
-}
-
-.card{
-    background: rgba(255,255,255,0.06);
-    backdrop-filter: blur(15px);
-    border-radius:15px;
-    padding:20px;
-    border:1px solid rgba(255,255,255,0.1);
-}
-
-.section-title{
-    font-weight:bold;
-    margin-bottom:10px;
-    opacity:0.85;
-}
-
-.prob-bar{
-    height:10px;
-    border-radius:10px;
-    background:#1e293b;
-    overflow:hidden;
-    margin-top:6px;
-}
-
-.prob-fill{
-    height:100%;
-    background: linear-gradient(90deg,#10b981,#06b6d4);
-}
-
-.badge{
-    padding:6px 12px;
-    border-radius:10px;
-    font-weight:bold;
-    font-size:13px;
-}
-
-.Platinum{background:#e5e4e2;color:black;}
-.Gold{background:#facc15;color:black;}
-.Silver{background:#94a3b8;color:black;}
-.Bronze{background:#b45309;color:white;}
-
-.dashboard{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-    gap:15px;
-}
-
-.metric{
-    background: rgba(255,255,255,0.05);
-    padding:15px;
-    border-radius:12px;
-    text-align:center;
-}
-
-.metric h3{
-    margin:5px 0;
-}
-
+body{margin:0;font-family:Arial;background:#0f172a;color:white}
+header{padding:20px;text-align:center;font-size:24px;background:#111827}
+button,input{padding:8px;border-radius:6px;border:none;margin:5px}
+.card{background:#1e293b;padding:15px;border-radius:10px;margin:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
 </style>
 </head>
-
 <body>
 
-<header>Quantum Alpha Engine</header>
+<header>Quantum Institutional Engine</header>
 
-<div class="controls">
-<input type="number" id="duration" value="30" placeholder="Duration (min)">
-<button onclick="generate()">Generate Trades</button>
-<button onclick="loadAnalytics()">Analytics</button>
+<div style="padding:15px;">
+<input type="number" id="account" value="1000">
+<input type="number" id="risk" value="1">
+<button onclick="generate()">Generate</button>
+<button onclick="heatmap()">Heatmap</button>
+<button onclick="correlation()">Correlation</button>
+<button onclick="analytics()">Analytics</button>
 </div>
 
-<div id="results" class="grid"></div>
-
-<div id="analyticsPanel" style="padding:20px;"></div>
+<div id="output" class="grid"></div>
 
 <script>
 
-async function generate(){
-    const duration = document.getElementById("duration").value;
-    const res = await fetch(`/api/scan?duration=${duration}`);
-    const data = await res.json();
+function notify(msg){
+    if(Notification.permission==="granted"){
+        new Notification(msg);
+    }
+}
 
-    const container = document.getElementById("results");
+if(Notification.permission!=="granted"){
+    Notification.requestPermission();
+}
+
+async function generate(){
+    const account=document.getElementById("account").value;
+    const risk=document.getElementById("risk").value;
+
+    const res=await fetch(`/api/scan?account=${account}&risk=${risk}`);
+    const data=await res.json();
+
+    const container=document.getElementById("output");
     container.innerHTML="";
 
-    data.results.forEach(trade=>{
-        const card = document.createElement("div");
-        card.className="card";
+    if(data.results){
+        data.results.forEach(t=>{
+            notify("New Trade: "+t.asset+" "+t.direction);
+            container.innerHTML+=`
+            <div class="card">
+            ${t.asset} ${t.direction}<br>
+            Entry: ${t.entry}<br>
+            TP: ${t.tp}<br>
+            SL: ${t.sl}<br>
+            Size: ${t.size}
+            </div>`;
+        });
+    } else {
+        container.innerHTML=data.message;
+    }
+}
 
-        card.innerHTML = `
-        <div class="section-title">${trade.asset}</div>
-        Direction: ${trade.direction}<br>
-        Entry: ${trade.entry}<br>
-        TP: ${trade.tp}<br>
-        SL: ${trade.sl}<br>
-        Regime: ${trade.regime}<br><br>
-        Probability: ${trade.probability}%
-        <div class="prob-bar">
-            <div class="prob-fill" style="width:${trade.probability}%"></div>
-        </div>
-        `;
-        container.appendChild(card);
+async function heatmap(){
+    const res=await fetch('/api/heatmap');
+    const data=await res.json();
+    const container=document.getElementById("output");
+    container.innerHTML="";
+    data.heatmap.forEach(h=>{
+        container.innerHTML+=`
+        <div class="card">
+        ${h.asset} - ${h.status}
+        </div>`;
     });
 }
 
-async function loadAnalytics(){
-    const res = await fetch(`/api/analytics`);
-    const data = await res.json();
+async function correlation(){
+    const res=await fetch('/api/correlation');
+    const data=await res.json();
+    const container=document.getElementById("output");
+    container.innerHTML="<div class='card'>Correlation Matrix</div>";
+    for(let a in data.matrix){
+        for(let b in data.matrix[a]){
+            container.innerHTML+=`
+            <div class="card">
+            ${a} vs ${b}: ${data.matrix[a][b]}
+            </div>`;
+        }
+    }
+}
 
-    document.getElementById("analyticsPanel").innerHTML = `
+async function analytics(){
+    const res=await fetch('/api/analytics');
+    const data=await res.json();
+    const container=document.getElementById("output");
+    container.innerHTML=`
     <div class="card">
-        <div class="section-title">Performance Analytics Dashboard</div>
-        <div class="dashboard">
-            <div class="metric">
-                <div>Winrate</div>
-                <h3>${data.winrate}%</h3>
-            </div>
-            <div class="metric">
-                <div>Average R:R</div>
-                <h3>${data.avg_rr}</h3>
-            </div>
-            <div class="metric">
-                <div>Expectancy</div>
-                <h3>${data.expectancy}</h3>
-            </div>
-            <div class="metric">
-                <div>Edge Score</div>
-                <h3>${data.edge_score}%</h3>
-                <div class="prob-bar">
-                    <div class="prob-fill" style="width:${data.edge_score}%"></div>
-                </div>
-            </div>
-        </div>
-        <br>
-        <div class="badge ${data.edge_grade}">
-            ${data.edge_grade} Edge
-        </div>
-    </div>
-    `;
+    Winrate: ${data.winrate}%<br>
+    Expectancy: ${data.expectancy}<br>
+    Avg RR: ${data.avg_rr}<br>
+    Edge Score: ${data.edge_score}%<br>
+    Grade: ${data.edge_grade}
+    </div>`;
 }
 
 </script>
