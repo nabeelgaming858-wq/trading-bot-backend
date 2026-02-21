@@ -4,38 +4,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quantum X Terminal</title>
 
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-
 <style>
 
 body{
     margin:0;
     font-family:'Inter',sans-serif;
-    background: radial-gradient(circle at top,#0f172a,#020617);
+    background: radial-gradient(circle at top,#1e293b,#020617);
     color:white;
 }
 
 header{
     text-align:center;
     padding:25px;
-    font-size:28px;
+    font-size:26px;
     font-weight:600;
-    background:linear-gradient(90deg,#06b6d4,#7c3aed,#3b82f6);
-    -webkit-background-clip:text;
-    -webkit-text-fill-color:transparent;
-    animation: glow 3s infinite alternate;
+    letter-spacing:1px;
 }
 
-@keyframes glow{
-    from{filter:drop-shadow(0 0 5px #06b6d4);}
-    to{filter:drop-shadow(0 0 20px #7c3aed);}
+.section{
+    padding:20px;
 }
-
-.section{padding:20px;text-align:center;}
 
 .button{
     padding:10px 18px;
-    border-radius:14px;
+    border-radius:12px;
     border:none;
     margin:6px;
     background:linear-gradient(45deg,#06b6d4,#3b82f6);
@@ -45,13 +37,13 @@ header{
 }
 
 .button:hover{
-    transform:scale(1.1);
-    box-shadow:0 0 20px #06b6d4;
+    transform:scale(1.07);
+    box-shadow:0 0 15px #3b82f6;
 }
 
 .input{
     padding:10px;
-    border-radius:12px;
+    border-radius:10px;
     border:none;
     background:rgba(255,255,255,0.08);
     color:white;
@@ -60,48 +52,53 @@ header{
 
 .grid{
     display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(350px,1fr));
-    gap:25px;
-    padding:25px;
+    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:20px;
+    padding:20px;
 }
 
 .card{
-    background:rgba(255,255,255,0.05);
+    background:rgba(255,255,255,0.06);
     backdrop-filter:blur(20px);
-    border-radius:20px;
+    border-radius:18px;
     padding:20px;
-    border:1px solid rgba(255,255,255,0.15);
-    transition:0.4s;
-    position:relative;
-    overflow:hidden;
+    border:1px solid rgba(255,255,255,0.1);
+    transition:0.3s;
 }
 
 .card:hover{
-    transform:translateY(-8px);
-    box-shadow:0 0 30px rgba(0,255,255,0.4);
+    transform:translateY(-5px);
+    box-shadow:0 0 20px rgba(0,255,255,0.3);
 }
 
-.chart-container{
-    height:150px;
-    margin-top:15px;
+.heat-bull{
+    border:2px solid #10b981;
+}
+
+.heat-bear{
+    border:2px solid #ef4444;
+}
+
+.heat-neutral{
+    border:2px solid #facc15;
 }
 
 .dashboard{
     display:grid;
     grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-    gap:20px;
+    gap:15px;
 }
 
 .metric{
-    background:rgba(255,255,255,0.07);
-    padding:20px;
-    border-radius:18px;
+    background:rgba(255,255,255,0.05);
+    padding:18px;
+    border-radius:14px;
     text-align:center;
 }
 
 .badge{
-    padding:10px 20px;
-    border-radius:16px;
+    padding:8px 16px;
+    border-radius:14px;
     font-weight:600;
 }
 
@@ -119,7 +116,30 @@ header{
 
 <div class="section">
 
+<button class="button" onclick="setMarket('crypto')">Crypto</button>
+<button class="button" onclick="setMarket('forex')">Forex</button>
+<button class="button" onclick="setMarket('all')">Whole Market</button>
+
+<br><br>
+
+<button class="button" onclick="setStyle('scalp')">Scalp</button>
+<button class="button" onclick="setStyle('intraday')">Intraday</button>
+<button class="button" onclick="setStyle('swing')">Swing</button>
+
+<br><br>
+
+<input class="input" id="durationValue" placeholder="Custom Duration">
+<select class="input" id="durationUnit">
+<option value="seconds">Seconds</option>
+<option value="minutes">Minutes</option>
+<option value="hours">Hours</option>
+<option value="days">Days</option>
+</select>
+
+<br><br>
+
 <button class="button" onclick="generate()">Generate Trades</button>
+<button class="button" onclick="loadHeatmap()">Heatmap</button>
 <button class="button" onclick="loadAnalytics()">Dashboard</button>
 
 </div>
@@ -129,59 +149,58 @@ header{
 
 <script>
 
+let currentMarket="crypto";
+let currentStyle="scalp";
+
+function setMarket(m){ currentMarket=m; }
+function setStyle(s){ currentStyle=s; }
+
 async function generate(){
 
-    const res=await fetch('/api/scan');
+    const duration=document.getElementById("durationValue").value || 30;
+
+    const res=await fetch(`/api/scan?duration=${duration}`);
     const data=await res.json();
 
     const container=document.getElementById("output");
     container.innerHTML="";
 
-    if(!data.results){
+    if(data.results){
+        data.results.forEach(t=>{
+            container.innerHTML+=`
+            <div class="card">
+            <h3>${t.asset}</h3>
+            <b>${t.direction}</b><br><br>
+            Entry: ${t.entry}<br>
+            TP: ${t.tp}<br>
+            SL: ${t.sl}
+            </div>`;
+        });
+    } else {
         container.innerHTML="<div class='card'>No Trades Found</div>";
-        return;
     }
-
-    data.results.forEach((t,i)=>{
-
-        const card=document.createElement("div");
-        card.className="card";
-        card.innerHTML=`
-        <h3>${t.asset}</h3>
-        <b>${t.direction}</b><br>
-        Entry: ${t.entry}<br>
-        TP: ${t.tp}<br>
-        SL: ${t.sl}
-        <div id="chart${i}" class="chart-container"></div>
-        `;
-
-        container.appendChild(card);
-
-        createChart(`chart${i}`,t.asset);
-    });
 }
 
-async function createChart(containerId,symbol){
+async function loadHeatmap(){
 
-    const chart=LightweightCharts.createChart(
-        document.getElementById(containerId),
-        { width:350,height:150,layout:{background:{color:'#020617'},textColor:'#fff'} }
-    );
+    const res=await fetch('/api/heatmap');
+    const data=await res.json();
 
-    const candleSeries=chart.addCandlestickSeries();
+    const container=document.getElementById("output");
+    container.innerHTML="";
 
-    const response=await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=15m&limit=50`);
-    const data=await response.json();
+    data.heatmap.forEach(h=>{
 
-    const formatted=data.map(d=>({
-        time:d[0]/1000,
-        open:parseFloat(d[1]),
-        high:parseFloat(d[2]),
-        low:parseFloat(d[3]),
-        close:parseFloat(d[4])
-    }));
+        let cls="heat-neutral";
+        if(h.status==="BULLISH") cls="heat-bull";
+        if(h.status==="BEARISH") cls="heat-bear";
 
-    candleSeries.setData(formatted);
+        container.innerHTML+=`
+        <div class="card ${cls}">
+        <h3>${h.asset}</h3>
+        ${h.status}
+        </div>`;
+    });
 }
 
 async function loadAnalytics(){
