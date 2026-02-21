@@ -3,150 +3,243 @@ import requests
 import pandas as pd
 import numpy as np
 import time
-import uuid
+from datetime import datetime
 
 app = Flask(__name__, template_folder="templates")
 
-CRYPTO_ASSETS = [
-"BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
-"SOLUSDT","DOGEUSDT","DOTUSDT","MATICUSDT","AVAXUSDT",
-"LTCUSDT","TRXUSDT","LINKUSDT","ATOMUSDT","ETCUSDT"
-]
+CRYPTO_ASSETS = ["BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT"]
 
-TRADE_LOG = []
+trade_history = []
+adaptive_multiplier = 1.0
+analytics_cache = {"data": None, "timestamp": 0}
 
 # =========================
 # INDICATORS
 # =========================
 
-def calculate_indicators(df):
+def calculate(df):
     df["EMA21"] = df["close"].ewm(span=21).mean()
     df["EMA50"] = df["close"].ewm(span=50).mean()
 
     delta = df["close"].diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(14).mean()
-    avg_loss = loss.rolling(14).mean()
-    rs = avg_gain / avg_loss
-    df["RSI"] = 100 - (100 / (1 + rs))
-    df["ATR"] = (df["high"] - df["low"]).rolling(14).mean()
+    rs = gain.rolling(14).mean() / loss.rolling(14).mean()
+    df["RSI"] = 100 - (100/(1+rs))
 
+    df["ATR"] = (df["high"] - df["low"]).rolling(14).mean()
     return df
 
-def get_ohlc(symbol):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
+def get_crypto(symbol, limit=200):
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=15m&limit={limit}"
     r = requests.get(url, timeout=5)
     data = r.json()
 
     df = pd.DataFrame(data, columns=[
-        "open_time","open","high","low","close","volume",
-        "close_time","qav","trades","tbav","tqav","ignore"
+        "t","open","high","low","close","volume",
+        "ct","q","n","tb","tq","ig"
     ])
 
     df["close"] = df["close"].astype(float)
     df["high"] = df["high"].astype(float)
     df["low"] = df["low"].astype(float)
-
     return df
 
 # =========================
-# GENERATE TRADES
+# VOLATILITY REGIME
+# =========================
+
+def volatility_regime(df):
+    atr = df["ATR"].iloc[-1]
+    high = np.percentile(df["ATR"].dropna(), 70)
+    low = np.percentile(df["ATR"].dropna(), 30)
+
+    if atr > high:
+        return "HIGH"
+    elif atr < low:
+        return "LOW"
+    return "NORMAL"
+
+# =========================
+# PROBABILITY MODEL
+# =========================
+
+def probability_model(df):
+    ema_gap = abs(df["EMA21"].iloc[-1] - df["EMA50"].iloc[-1])
+    trend_strength = min(ema_gap * 100, 1)
+
+    rsi_strength = abs(df["RSI"].iloc[-1] - 50) / 50
+    volatility_factor = df["ATR"].iloc[-1] / df["ATR"].mean()
+
+    base_winrate = 0.55
+
+    probability = (
+        (base_winrate * 0.6) +
+        (trend_strength * 0.2) +
+        (volatility_factor * 0.2)
+    )
+
+    probability = min(probability, 0.95)
+    return round(probability * 100, 1)
+
+# =========================
+# EDGE MODEL
+# =========================
+
+def edge_model(winrate, avg_rr):
+
+    expectancy = (winrate/100 * avg_rr) - ((1 - winrate/100) * 1)
+
+    stability = min(winrate/100, 1)
+
+    edge_score = (
+        (winrate * 0.4) +
+        (avg_rr * 15 * 0.3) +
+        (stability * 100 * 0.3)
+    )
+
+    edge_score = min(edge_score, 100)
+
+    if edge_score > 85:
+        grade = "Platinum"
+    elif edge_score > 70:
+        grade = "Gold"
+    elif edge_score > 55:
+        grade = "Silver"
+    else:
+        grade = "Bronze"
+
+    return round(edge_score,1), grade, round(expectancy,3)
+
+# =========================
+# SCAN
 # =========================
 
 @app.route("/api/scan")
 def scan():
 
-    duration_minutes = int(request.args.get("minutes","60"))
+    global adaptive_multiplier
 
+    duration = int(request.args.get("duration","30"))
     results = []
 
-    for asset in CRYPTO_ASSETS[:8]:
+    for asset in CRYPTO_ASSETS:
 
-        try:
-            df = calculate_indicators(get_ohlc(asset))
-            latest = df.iloc[-1]
+        df = calculate(get_crypto(asset))
+        latest = df.iloc[-1]
 
-            if latest["EMA21"] > latest["EMA50"] and latest["RSI"] > 55:
+        direction = None
+        score = 0
 
-                price = latest["close"]
-                atr = latest["ATR"]
+        if latest["EMA21"] > latest["EMA50"]:
+            direction = "BUY"
+            score += 2
+        elif latest["EMA21"] < latest["EMA50"]:
+            direction = "SELL"
+            score += 2
 
-                tp = price + (2 * atr)
-                sl = price - (1.5 * atr)
+        if direction == "BUY" and latest["RSI"] > 55:
+            score += 2
+        if direction == "SELL" and latest["RSI"] < 45:
+            score += 2
 
-                trade = {
-                    "id": str(uuid.uuid4()),
-                    "asset": asset,
-                    "direction": "BUY",
-                    "entry": price,
-                    "tp": tp,
-                    "sl": sl,
-                    "status": "OPEN",
-                    "created_at": time.time(),
-                    "duration_minutes": duration_minutes,
-                    "expires_at": time.time() + (duration_minutes * 60)
-                }
-
-                TRADE_LOG.append(trade)
-                results.append(trade)
-
-        except:
+        if score < 3:
             continue
 
-    return jsonify({"results": results})
+        regime = volatility_regime(df)
+        price = latest["close"]
+        atr = latest["ATR"]
+
+        duration_factor = max(duration/30,1)
+
+        sl_mult = 1.3 * adaptive_multiplier
+        tp_mult = 2.2 * adaptive_multiplier
+
+        if direction == "BUY":
+            tp = price + (tp_mult * atr * duration_factor)
+            sl = price - (sl_mult * atr * duration_factor)
+        else:
+            tp = price - (tp_mult * atr * duration_factor)
+            sl = price + (sl_mult * atr * duration_factor)
+
+        probability = probability_model(df)
+
+        trade = {
+            "asset": asset,
+            "direction": direction,
+            "entry": round(price,6),
+            "tp": round(tp,6),
+            "sl": round(sl,6),
+            "probability": probability,
+            "regime": regime
+        }
+
+        trade_history.append(trade)
+        if len(trade_history) > 20:
+            trade_history.pop(0)
+
+        results.append(trade)
+
+    return jsonify({"results": results[:3]})
 
 # =========================
-# MONITOR TRADES
+# ANALYTICS DASHBOARD
 # =========================
 
-@app.route("/api/monitor")
-def monitor():
+@app.route("/api/analytics")
+def analytics():
 
-    now = time.time()
+    global analytics_cache
 
-    for trade in TRADE_LOG:
+    if time.time() - analytics_cache["timestamp"] < 300:
+        return jsonify(analytics_cache["data"])
 
-        if trade["status"] != "OPEN":
-            continue
+    total = 0
+    wins = 0
+    rr_list = []
 
-        # Expiration check
-        if now > trade["expires_at"]:
-            trade["status"] = "EXPIRED"
-            continue
+    for asset in CRYPTO_ASSETS:
 
-        try:
-            url = f"https://api.binance.com/api/v3/ticker/price?symbol={trade['asset']}"
-            r = requests.get(url, timeout=5)
-            current_price = float(r.json()["price"])
+        df = calculate(get_crypto(asset, limit=150))
 
-            if current_price >= trade["tp"]:
-                trade["status"] = "TP HIT"
+        for i in range(50, len(df)-5):
 
-            elif current_price <= trade["sl"]:
-                trade["status"] = "SL HIT"
+            row = df.iloc[i]
+            future = df.iloc[i+1:i+6]
 
-        except:
-            continue
+            if row["EMA21"] > row["EMA50"] and row["RSI"] > 55:
 
-    total = len(TRADE_LOG)
-    tp_hits = len([t for t in TRADE_LOG if t["status"]=="TP HIT"])
-    sl_hits = len([t for t in TRADE_LOG if t["status"]=="SL HIT"])
-    expired = len([t for t in TRADE_LOG if t["status"]=="EXPIRED"])
-    open_trades = len([t for t in TRADE_LOG if t["status"]=="OPEN"])
+                entry = row["close"]
+                tp = entry + (2 * row["ATR"])
+                sl = entry - (1.5 * row["ATR"])
 
-    completed = tp_hits + sl_hits
-    winrate = (tp_hits / completed * 100) if completed > 0 else 0
+                total += 1
 
-    return jsonify({
-        "total_trades": total,
-        "tp_hits": tp_hits,
-        "sl_hits": sl_hits,
-        "expired": expired,
-        "open_trades": open_trades,
-        "win_rate": round(winrate,1),
-        "trades": TRADE_LOG
-    })
+                if any(future["high"] >= tp):
+                    wins += 1
+                    rr_list.append(2/1.5)
+                elif any(future["low"] <= sl):
+                    rr_list.append(-1)
+
+    winrate = (wins/total*100) if total>0 else 0
+    avg_rr = np.mean(rr_list) if rr_list else 0
+
+    edge_score, grade, expectancy = edge_model(winrate, avg_rr)
+
+    data = {
+        "winrate": round(winrate,1),
+        "avg_rr": round(avg_rr,2),
+        "edge_score": edge_score,
+        "edge_grade": grade,
+        "expectancy": expectancy
+    }
+
+    analytics_cache = {
+        "data": data,
+        "timestamp": time.time()
+    }
+
+    return jsonify(data)
 
 @app.route("/")
 def home():
