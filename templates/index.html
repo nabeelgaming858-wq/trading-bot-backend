@@ -1,252 +1,222 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quantum X Terminal</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Algo | Professional Trading</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent: #00ff88;
+            --accent-glow: rgba(0, 255, 136, 0.4);
+            --danger: #ff3366;
+            --bg-color: #0a0e17;
+            --text-main: #ffffff;
+            --text-muted: #8b9bb4;
+        }
 
-<style>
-body{
-    margin:0;
-    font-family:'Segoe UI',sans-serif;
-    background: linear-gradient(135deg,#0f172a,#020617);
-    color:white;
-}
+        body {
+            margin: 0; padding: 0;
+            background: radial-gradient(circle at 50% 0%, #1a2332 0%, var(--bg-color) 70%);
+            color: var(--text-main);
+            font-family: 'Inter', -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center;
+        }
 
-header{
-    padding:20px;
-    text-align:center;
-    font-size:26px;
-    font-weight:600;
-    background:linear-gradient(90deg,#06b6d4,#7c3aed);
-    -webkit-background-clip:text;
-    -webkit-text-fill-color:transparent;
-}
+        .container { width: 95%; max-width: 900px; margin-top: 40px; }
 
-.section{padding:15px 20px;}
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px; padding: 30px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+        }
 
-button{
-    padding:8px 14px;
-    border-radius:10px;
-    border:none;
-    margin:4px;
-    font-size:13px;
-    cursor:pointer;
-    background:linear-gradient(45deg,#06b6d4,#3b82f6);
-    color:white;
-    transition:0.3s;
-}
-button:hover{
-    transform:scale(1.05);
-    box-shadow:0 0 15px #3b82f6;
-}
+        h1 { text-align: center; font-weight: 300; letter-spacing: 2px; margin-bottom: 5px; }
+        p.subtitle { text-align: center; color: var(--text-muted); margin-bottom: 30px; }
 
-select,input{
-    padding:8px;
-    border-radius:10px;
-    border:none;
-    margin:4px;
-    background:rgba(255,255,255,0.08);
-    color:white;
-}
+        .controls { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
+        input[type="text"], select {
+            flex: 1; padding: 15px; border-radius: 10px;
+            background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border);
+            color: white; font-size: 16px; min-width: 150px;
+        }
 
-.grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-    gap:15px;
-    padding:20px;
-}
+        button.generate-btn {
+            width: 100%; padding: 18px; background: transparent;
+            border: 1px solid var(--accent); color: var(--accent);
+            border-radius: 12px; font-size: 18px; font-weight: 600;
+            cursor: pointer; transition: all 0.3s ease; text-transform: uppercase;
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+        button.generate-btn:hover { background: var(--accent); color: var(--bg-color); box-shadow: 0 0 30px var(--accent-glow); }
+        button:disabled { border-color: var(--text-muted); color: var(--text-muted); box-shadow: none; cursor: not-allowed; }
 
-.card{
-    background:rgba(255,255,255,0.06);
-    backdrop-filter:blur(12px);
-    border-radius:15px;
-    padding:15px;
-    border:1px solid rgba(255,255,255,0.1);
-    text-align:center;
-}
-
-.asset-box{
-    padding:12px;
-    border-radius:10px;
-    background:rgba(255,255,255,0.05);
-    cursor:pointer;
-    text-align:center;
-}
-.asset-box:hover{
-    background:#1e293b;
-}
-.asset-selected{
-    border:2px solid #06b6d4;
-    box-shadow:0 0 12px #06b6d4;
-}
-
-.heat-bull{background:#065f46;}
-.heat-bear{background:#7f1d1d;}
-.heat-neutral{background:#78350f;}
-
-</style>
+        .trade-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px; margin-top: 20px; display: none;
+        }
+        .data-card { background: rgba(0,0,0,0.2); padding: 15px; border-radius: 10px; border: 1px solid var(--glass-border); }
+        .data-card label { display: block; color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 5px; }
+        .data-card span { font-size: 18px; font-weight: 600; }
+        .signal-long { color: var(--accent); }
+        .signal-short { color: var(--danger); }
+        
+        #error-msg { color: var(--danger); text-align: center; margin-top: 15px; display: none; font-weight: bold; }
+        
+        /* Interactive Chart Container */
+        #tv-chart { width: 100%; height: 350px; margin-top: 20px; border-radius: 10px; overflow: hidden; display: none; border: 1px solid var(--glass-border); }
+    </style>
 </head>
 <body>
 
-<header>Quantum X Institutional Terminal</header>
+    <div class="container">
+        <div class="glass-panel">
+            <h1>QUANTUM ALGO</h1>
+            <p class="subtitle">Institutional-Grade Market Analysis</p>
 
-<div class="section">
+            <div class="controls">
+                <input type="text" id="duration" placeholder="Expected Duration (e.g., 4 Hours, 2 Days)">
+                <select id="risk-level">
+                    <option value="Conservative">Conservative Risk</option>
+                    <option value="Aggressive">Aggressive Risk</option>
+                </select>
+            </div>
 
-<!-- MARKET -->
-<button onclick="setMarket('crypto')">Crypto</button>
-<button onclick="setMarket('forex')">Forex</button>
-<button onclick="setMarket('all')">Whole Market</button>
-<button onclick="showSingle()">Single Asset</button>
+            <button class="generate-btn" id="generateBtn" onclick="generateTrade()">Scan Market & Generate Trade</button>
+            <div id="error-msg"></div>
+        </div>
 
-<br><br>
+        <div class="glass-panel" id="dashboard" style="display: none;">
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px; margin-bottom: 20px;">
+                <span id="out-session" style="color: var(--accent);">Session: Calculating...</span>
+                <span id="out-volatility" style="color: var(--text-muted);">Volatility: Scanning...</span>
+            </div>
 
-<!-- STYLE -->
-<button onclick="setStyle('scalp')">Scalp</button>
-<button onclick="setStyle('intraday')">Intraday</button>
-<button onclick="setStyle('swing')">Swing</button>
+            <h2 id="out-asset" style="text-align: center; font-size: 2em; margin: 0;">--</h2>
+            <p id="out-signal" style="text-align: center; font-size: 1.5em; font-weight: bold; margin: 5px 0 20px 0;">--</p>
 
-<select id="durationUnit">
-<option value="seconds">Seconds</option>
-<option value="minutes">Minutes</option>
-<option value="hours">Hours</option>
-<option value="days">Days</option>
-</select>
+            <div id="tv-chart"></div>
 
-<input type="number" id="durationValue" placeholder="Duration">
+            <div class="trade-grid" id="tradeGrid">
+                <div class="data-card">
+                    <label>Entry Price</label>
+                    <span id="out-price">--</span>
+                </div>
+                <div class="data-card">
+                    <label>Take Profit (Order Book Calc)</label>
+                    <span id="out-tp" class="signal-long">--</span>
+                </div>
+                <div class="data-card">
+                    <label>Stop Loss (ATR Buffer)</label>
+                    <span id="out-sl" class="signal-short">--</span>
+                </div>
+                <div class="data-card">
+                    <label>Dynamic Leverage</label>
+                    <span id="out-leverage">--</span>
+                </div>
+            </div>
+            
+            <div class="data-card" style="margin-top: 20px;">
+                <label>Algorithmic Rationale</label>
+                <span id="out-logic" style="font-size: 14px; font-weight: normal; color: var(--text-muted);">--</span>
+            </div>
+        </div>
+    </div>
 
-<br><br>
+    <script>
+        let chartInstance = null;
 
-<input type="number" id="account" placeholder="Account Balance">
-<input type="number" id="risk" step="0.1" placeholder="Risk %">
+        function renderChart(historicalData, entryPrice, tpPrice, slPrice) {
+            const chartContainer = document.getElementById('tv-chart');
+            chartContainer.style.display = 'block';
+            chartContainer.innerHTML = ''; // Clear old chart
 
-<br><br>
+            chartInstance = LightweightCharts.createChart(chartContainer, {
+                width: chartContainer.clientWidth,
+                height: 350,
+                layout: { background: { type: 'solid', color: 'rgba(10, 14, 23, 0.8)' }, textColor: '#8b9bb4' },
+                grid: { vertLines: { color: 'rgba(255, 255, 255, 0.05)' }, horzLines: { color: 'rgba(255, 255, 255, 0.05)' } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                timeScale: { timeVisible: true, secondsVisible: false }
+            });
 
-<button onclick="generate()">Generate Trades</button>
-<button onclick="loadHeatmap()">Heatmap</button>
-<button onclick="loadAnalytics()">Dashboard</button>
+            const candleSeries = chartInstance.addCandlestickSeries({
+                upColor: '#00ff88', downColor: '#ff3366', borderVisible: false, wickUpColor: '#00ff88', wickDownColor: '#ff3366'
+            });
 
-</div>
+            candleSeries.setData(historicalData);
 
-<div id="assetGrid" class="grid"></div>
-<div id="output" class="grid"></div>
-<div id="dashboard" class="section"></div>
+            // Draw TP/SL/Entry Lines visually
+            candleSeries.createPriceLine({ price: parseFloat(entryPrice), color: '#ffffff', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'ENTRY' });
+            candleSeries.createPriceLine({ price: parseFloat(tpPrice), color: '#00ff88', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: 'TP' });
+            candleSeries.createPriceLine({ price: parseFloat(slPrice), color: '#ff3366', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: 'SL' });
 
-<script>
-
-let currentMarket="crypto";
-let selectedAsset=null;
-
-const cryptoAssets=[
-"BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
-"SOLUSDT","DOGEUSDT","MATICUSDT","DOTUSDT","AVAXUSDT",
-"LTCUSDT","TRXUSDT","LINKUSDT","ATOMUSDT","XLMUSDT",
-"NEARUSDT","FILUSDT","AAVEUSDT","SANDUSDT","HBARUSDT",
-"FTMUSDT","OPUSDT","APTUSDT","INJUSDT","ARBUSDT"
-];
-
-const forexAssets=[
-"EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD",
-"USDCHF","NZDUSD","EURGBP","EURJPY","GBPJPY",
-"AUDJPY","CHFJPY","EURAUD","GBPAUD","CADJPY"
-];
-
-function setMarket(m){
-    currentMarket=m;
-    document.getElementById("assetGrid").innerHTML="";
-}
-
-function showSingle(){
-    const container=document.getElementById("assetGrid");
-    container.innerHTML="";
-    const list=currentMarket==="forex"?forexAssets:cryptoAssets;
-
-    list.forEach(a=>{
-        container.innerHTML+=`
-        <div class="asset-box" onclick="selectAsset('${a}')">
-        ${a}
-        </div>`;
-    });
-}
-
-function selectAsset(asset){
-    selectedAsset=asset;
-    showSingle();
-    const boxes=document.querySelectorAll(".asset-box");
-    boxes.forEach(box=>{
-        if(box.innerText===asset){
-            box.classList.add("asset-selected");
+            chartInstance.timeScale().fitContent();
         }
-    });
-}
 
-function setStyle(s){
-    if(s==="scalp") document.getElementById("durationValue").value=15;
-    if(s==="intraday") document.getElementById("durationValue").value=240;
-    if(s==="swing") document.getElementById("durationValue").value=1440;
-}
+        async function generateTrade() {
+            const btn = document.getElementById('generateBtn');
+            const errorMsg = document.getElementById('error-msg');
+            const dashboard = document.getElementById('dashboard');
+            const tradeGrid = document.getElementById('tradeGrid');
+            const duration = document.getElementById('duration').value || 'Hours';
 
-async function generate(){
-    const account=document.getElementById("account").value;
-    const risk=document.getElementById("risk").value;
+            btn.disabled = true;
+            btn.innerText = "Analyzing Markets...";
+            errorMsg.style.display = 'none';
 
-    let url=`/api/scan?account=${account}&risk=${risk}`;
+            try {
+                const response = await fetch('/generate_trade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ duration: duration })
+                });
 
-    const res=await fetch(url);
-    const data=await res.json();
+                const result = await response.json();
 
-    const container=document.getElementById("output");
-    container.innerHTML="";
+                if (result.status === 'success') {
+                    const data = result.data;
+                    document.getElementById('out-session').innerText = `Session: ${data.session}`;
+                    document.getElementById('out-volatility').innerText = `Volatility: ${data.volatility}`;
+                    document.getElementById('out-asset').innerText = `${data.asset} (${data.type})`;
+                    
+                    const signalEl = document.getElementById('out-signal');
+                    signalEl.innerText = data.signal;
+                    signalEl.className = data.signal === 'LONG' ? 'signal-long' : 'signal-short';
 
-    if(data.results){
-        data.results.forEach(t=>{
-            container.innerHTML+=`
-            <div class="card">
-            <h3>${t.asset}</h3>
-            <b>${t.direction}</b><br>
-            Entry: ${t.entry}<br>
-            TP: ${t.tp}<br>
-            SL: ${t.sl}<br>
-            Size: ${t.size}
-            </div>`;
-        });
-    }else{
-        container.innerHTML="<div class='card'>No Trades</div>";
-    }
-}
+                    document.getElementById('out-price').innerText = data.price;
+                    document.getElementById('out-tp').innerText = data.tp;
+                    document.getElementById('out-sl').innerText = data.sl;
+                    document.getElementById('out-leverage').innerText = data.leverage;
+                    document.getElementById('out-logic').innerText = data.logic;
 
-async function loadHeatmap(){
-    const res=await fetch('/api/heatmap');
-    const data=await res.json();
-    const container=document.getElementById("output");
-    container.innerHTML="";
+                    dashboard.style.display = 'block';
+                    tradeGrid.style.display = 'grid';
 
-    data.heatmap.forEach(h=>{
-        let cls="heat-neutral";
-        if(h.status==="BULLISH") cls="heat-bull";
-        if(h.status==="BEARISH") cls="heat-bear";
+                    // Trigger Interactive Chart
+                    if (data.chart_data && data.chart_data.length > 0) {
+                        renderChart(data.chart_data, data.price, data.tp, data.sl);
+                    }
+                } else {
+                    errorMsg.innerText = result.message;
+                    errorMsg.style.display = 'block';
+                    dashboard.style.display = 'none';
+                }
+            } catch (err) {
+                errorMsg.innerText = "Connection failed. Please check Cloud Run logs.";
+                errorMsg.style.display = 'block';
+            }
 
-        container.innerHTML+=`
-        <div class="card ${cls}">
-        ${h.asset}<br>${h.status}
-        </div>`;
-    });
-}
-
-async function loadAnalytics(){
-    const res=await fetch('/api/analytics');
-    const data=await res.json();
-
-    document.getElementById("dashboard").innerHTML=`
-    <div class="card">
-    Winrate: ${data.winrate}%<br>
-    Expectancy: ${data.expectancy}<br>
-    Avg RR: ${data.avg_rr}<br>
-    Edge Score: ${data.edge_score}%<br>
-    Grade: ${data.edge_grade}
-    </div>`;
-}
-
-</script>
-
+            btn.disabled = false;
+            btn.innerText = "Scan Market & Generate Trade";
+        }
+    </script>
 </body>
-</html>
+    </html>
+    
