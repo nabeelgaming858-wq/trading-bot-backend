@@ -14,4 +14,3 @@ COPY . .
 # Cloud Run injects the PORT environment variable (default 8080)
 # We use Gunicorn as a production WSGI server
 CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
-  
