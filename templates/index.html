@@ -2,221 +2,313 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Algo | Professional Trading</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>ProTrading Bot | High Probability Signals</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js for reactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root {
-            --glass-bg: rgba(255, 255, 255, 0.05);
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --accent: #00ff88;
-            --accent-glow: rgba(0, 255, 136, 0.4);
-            --danger: #ff3366;
-            --bg-color: #0a0e17;
-            --text-main: #ffffff;
-            --text-muted: #8b9bb4;
+        /* Glassmorphic custom styles */
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
         }
-
+        .glass-dark {
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
         body {
-            margin: 0; padding: 0;
-            background: radial-gradient(circle at 50% 0%, #1a2332 0%, var(--bg-color) 70%);
-            color: var(--text-main);
-            font-family: 'Inter', -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            display: flex; flex-direction: column; align-items: center;
+            font-family: 'Inter', sans-serif;
         }
-
-        .container { width: 95%; max-width: 900px; margin-top: 40px; }
-
-        .glass-panel {
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border);
-            border-radius: 20px; padding: 30px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-            margin-bottom: 20px;
+        .price-updated {
+            animation: pulse 1s;
         }
-
-        h1 { text-align: center; font-weight: 300; letter-spacing: 2px; margin-bottom: 5px; }
-        p.subtitle { text-align: center; color: var(--text-muted); margin-bottom: 30px; }
-
-        .controls { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
-        input[type="text"], select {
-            flex: 1; padding: 15px; border-radius: 10px;
-            background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border);
-            color: white; font-size: 16px; min-width: 150px;
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
         }
-
-        button.generate-btn {
-            width: 100%; padding: 18px; background: transparent;
-            border: 1px solid var(--accent); color: var(--accent);
-            border-radius: 12px; font-size: 18px; font-weight: 600;
-            cursor: pointer; transition: all 0.3s ease; text-transform: uppercase;
-            box-shadow: 0 0 15px var(--accent-glow);
-        }
-        button.generate-btn:hover { background: var(--accent); color: var(--bg-color); box-shadow: 0 0 30px var(--accent-glow); }
-        button:disabled { border-color: var(--text-muted); color: var(--text-muted); box-shadow: none; cursor: not-allowed; }
-
-        .trade-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px; margin-top: 20px; display: none;
-        }
-        .data-card { background: rgba(0,0,0,0.2); padding: 15px; border-radius: 10px; border: 1px solid var(--glass-border); }
-        .data-card label { display: block; color: var(--text-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 5px; }
-        .data-card span { font-size: 18px; font-weight: 600; }
-        .signal-long { color: var(--accent); }
-        .signal-short { color: var(--danger); }
-        
-        #error-msg { color: var(--danger); text-align: center; margin-top: 15px; display: none; font-weight: bold; }
-        
-        /* Interactive Chart Container */
-        #tv-chart { width: 100%; height: 350px; margin-top: 20px; border-radius: 10px; overflow: hidden; display: none; border: 1px solid var(--glass-border); }
     </style>
 </head>
-<body>
-
-    <div class="container">
-        <div class="glass-panel">
-            <h1>QUANTUM ALGO</h1>
-            <p class="subtitle">Institutional-Grade Market Analysis</p>
-
-            <div class="controls">
-                <input type="text" id="duration" placeholder="Expected Duration (e.g., 4 Hours, 2 Days)">
-                <select id="risk-level">
-                    <option value="Conservative">Conservative Risk</option>
-                    <option value="Aggressive">Aggressive Risk</option>
-                </select>
+<body class="text-white p-4">
+    <div class="container mx-auto max-w-6xl" x-data="tradingBot()" x-init="init()">
+        <!-- Header -->
+        <div class="glass p-6 mb-6 flex flex-col md:flex-row justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-purple-300">
+                    <i class="fas fa-robot mr-2"></i>ProTrading Bot
+                </h1>
+                <p class="text-sm opacity-80">High-Probability Trades | Real Market Data</p>
             </div>
-
-            <button class="generate-btn" id="generateBtn" onclick="generateTrade()">Scan Market & Generate Trade</button>
-            <div id="error-msg"></div>
+            <div class="flex items-center space-x-4 mt-4 md:mt-0">
+                <div class="text-right">
+                    <div class="text-xs opacity-70">Current Session</div>
+                    <div class="text-xl font-semibold" x-text="session"></div>
+                </div>
+                <div class="h-10 w-10 rounded-full glass-dark flex items-center justify-center">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+            </div>
         </div>
 
-        <div class="glass-panel" id="dashboard" style="display: none;">
-            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px; margin-bottom: 20px;">
-                <span id="out-session" style="color: var(--accent);">Session: Calculating...</span>
-                <span id="out-volatility" style="color: var(--text-muted);">Volatility: Scanning...</span>
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left Panel: Trade Generator -->
+            <div class="lg:col-span-2 glass p-6">
+                <h2 class="text-xl mb-4 flex items-center"><i class="fas fa-magic mr-2 text-yellow-300"></i>Trade Generator</h2>
+                
+                <!-- Duration Selector -->
+                <div class="mb-6">
+                    <label class="block text-sm opacity-70 mb-1">Trade Duration (minutes)</label>
+                    <div class="flex space-x-2">
+                        <input type="number" x-model="duration" min="1" max="1440" class="w-24 px-3 py-2 bg-black bg-opacity-30 rounded-lg border border-white border-opacity-20 text-white">
+                        <select x-model="durationUnit" class="px-3 py-2 bg-black bg-opacity-30 rounded-lg border border-white border-opacity-20">
+                            <option value="minutes">Minutes</option>
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                        </select>
+                        <button @click="generateTrade" :disabled="loading" class="flex-1 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 px-4 py-2 rounded-lg font-semibold flex items-center justify-center">
+                            <i class="fas fa-sync-alt mr-2" :class="{'animate-spin': loading}"></i>
+                            <span x-text="loading ? 'Scanning...' : 'Generate Trade'"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Trade Card -->
+                <div x-show="signal" class="glass-dark p-6 rounded-xl">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="text-2xl font-bold" x-text="signal.asset"></span>
+                            <span class="ml-2 px-2 py-1 text-xs rounded" :class="signal.direction === 'LONG' ? 'bg-green-500' : 'bg-red-500'" x-text="signal.direction"></span>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs opacity-70">Confidence</div>
+                            <div class="text-xl font-bold" x-text="signal.confidence + '%'"></div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                        <div>
+                            <div class="text-xs opacity-70">Entry</div>
+                            <div class="text-lg font-mono" x-text="signal.entry"></div>
+                        </div>
+                        <div>
+                            <div class="text-xs opacity-70">SL</div>
+                            <div class="text-lg font-mono text-red-300" x-text="signal.stop_loss + ' (' + signal.sl_percent + '%)'"></div>
+                        </div>
+                        <div>
+                            <div class="text-xs opacity-70">TP</div>
+                            <div class="text-lg font-mono text-green-300" x-text="signal.take_profit + ' (' + signal.tp_percent + '%)'"></div>
+                        </div>
+                        <div>
+                            <div class="text-xs opacity-70">Leverage</div>
+                            <div class="text-lg font-mono" x-text="signal.leverage + 'x'"></div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mt-2">
+                        <div>
+                            <div class="text-xs opacity-70">Duration</div>
+                            <div class="text-lg font-mono" x-text="signal.duration + ' min'"></div>
+                        </div>
+                        <div>
+                            <div class="text-xs opacity-70">Session</div>
+                            <div class="text-lg font-mono capitalize" x-text="signal.session"></div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-sm border-t border-white border-opacity-20 pt-4">
+                        <div class="font-semibold">Why this trade?</div>
+                        <p class="opacity-80" x-text="signal.reason"></p>
+                        <div class="mt-2 text-xs bg-black bg-opacity-30 p-2 rounded">
+                            <i class="fas fa-newspaper mr-1"></i> News: <span x-text="signal.news"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- No trade message -->
+                <div x-show="!signal && !loading" class="text-center py-12 opacity-50">
+                    <i class="fas fa-chart-bar text-4xl mb-3"></i>
+                    <p>Click "Generate Trade" to scan markets</p>
+                </div>
             </div>
 
-            <h2 id="out-asset" style="text-align: center; font-size: 2em; margin: 0;">--</h2>
-            <p id="out-signal" style="text-align: center; font-size: 1.5em; font-weight: bold; margin: 5px 0 20px 0;">--</p>
+            <!-- Right Panel: Live Prices & Dashboard -->
+            <div class="glass p-6">
+                <h2 class="text-xl mb-4 flex items-center"><i class="fas fa-chart-pie mr-2 text-purple-300"></i>Market Dashboard</h2>
+                
+                <!-- Session Status -->
+                <div class="mb-4 glass-dark p-3 rounded">
+                    <div class="flex justify-between">
+                        <span>Current Session:</span>
+                        <span class="font-bold capitalize" x-text="session"></span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span>Volatility:</span>
+                        <span :class="volatility === 'high' ? 'text-red-300' : 'text-green-300'" x-text="volatility"></span>
+                    </div>
+                </div>
 
-            <div id="tv-chart"></div>
+                <!-- Live Prices (Top 5) -->
+                <h3 class="font-semibold mb-2">Live Prices <span class="text-xs opacity-50">(updating)</span></h3>
+                <div class="space-y-2 max-h-64 overflow-y-auto pr-2">
+                    <template x-for="(price, sym) in livePrices" :key="sym">
+                        <div class="flex justify-between items-center glass-dark p-2 rounded text-sm">
+                            <span x-text="sym"></span>
+                            <span class="font-mono" :class="priceClass(sym, price)" x-text="formatPrice(price)"></span>
+                        </div>
+                    </template>
+                </div>
 
-            <div class="trade-grid" id="tradeGrid">
-                <div class="data-card">
-                    <label>Entry Price</label>
-                    <span id="out-price">--</span>
+                <!-- Quick Stats -->
+                <div class="mt-4 grid grid-cols-2 gap-2">
+                    <div class="glass-dark p-2 rounded text-center">
+                        <div class="text-xs opacity-70">Top Gainer</div>
+                        <div class="font-bold text-green-300" x-text="topGainer"></div>
+                    </div>
+                    <div class="glass-dark p-2 rounded text-center">
+                        <div class="text-xs opacity-70">Top Loser</div>
+                        <div class="font-bold text-red-300" x-text="topLoser"></div>
+                    </div>
                 </div>
-                <div class="data-card">
-                    <label>Take Profit (Order Book Calc)</label>
-                    <span id="out-tp" class="signal-long">--</span>
+
+                <!-- Risk Profile -->
+                <div class="mt-4">
+                    <label class="block text-sm opacity-70 mb-1">Risk Profile</label>
+                    <select x-model="riskProfile" class="w-full px-3 py-2 bg-black bg-opacity-30 rounded-lg border border-white border-opacity-20">
+                        <option value="conservative">Conservative</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="aggressive">Aggressive</option>
+                    </select>
                 </div>
-                <div class="data-card">
-                    <label>Stop Loss (ATR Buffer)</label>
-                    <span id="out-sl" class="signal-short">--</span>
-                </div>
-                <div class="data-card">
-                    <label>Dynamic Leverage</label>
-                    <span id="out-leverage">--</span>
+
+                <!-- Mini Chart Placeholder -->
+                <div class="mt-4">
+                    <canvas id="priceChart" class="w-full h-32"></canvas>
                 </div>
             </div>
-            
-            <div class="data-card" style="margin-top: 20px;">
-                <label>Algorithmic Rationale</label>
-                <span id="out-logic" style="font-size: 14px; font-weight: normal; color: var(--text-muted);">--</span>
-            </div>
+        </div>
+
+        <!-- Footer Note -->
+        <div class="text-center text-xs opacity-50 mt-8">
+            * Signals are for educational purposes. Always manage your risk.
         </div>
     </div>
 
     <script>
-        let chartInstance = null;
+        function tradingBot() {
+            return {
+                session: 'asia',
+                volatility: 'medium',
+                duration: 60,
+                durationUnit: 'minutes',
+                loading: false,
+                signal: null,
+                livePrices: {},
+                previousPrices: {},
+                topGainer: 'BTC',
+                topLoser: 'XRP',
+                riskProfile: 'moderate',
+                chart: null,
 
-        function renderChart(historicalData, entryPrice, tpPrice, slPrice) {
-            const chartContainer = document.getElementById('tv-chart');
-            chartContainer.style.display = 'block';
-            chartContainer.innerHTML = ''; // Clear old chart
+                init() {
+                    this.fetchSession();
+                    this.fetchPrices();
+                    setInterval(() => this.fetchPrices(), 10000); // update prices every 10s
+                    setInterval(() => this.fetchSession(), 60000); // update session every minute
+                },
 
-            chartInstance = LightweightCharts.createChart(chartContainer, {
-                width: chartContainer.clientWidth,
-                height: 350,
-                layout: { background: { type: 'solid', color: 'rgba(10, 14, 23, 0.8)' }, textColor: '#8b9bb4' },
-                grid: { vertLines: { color: 'rgba(255, 255, 255, 0.05)' }, horzLines: { color: 'rgba(255, 255, 255, 0.05)' } },
-                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-                timeScale: { timeVisible: true, secondsVisible: false }
-            });
+                async fetchSession() {
+                    const res = await fetch('/api/session');
+                    const data = await res.json();
+                    this.session = data.session;
+                },
 
-            const candleSeries = chartInstance.addCandlestickSeries({
-                upColor: '#00ff88', downColor: '#ff3366', borderVisible: false, wickUpColor: '#00ff88', wickDownColor: '#ff3366'
-            });
+                async fetchPrices() {
+                    const res = await fetch('/api/prices');
+                    const data = await res.json();
+                    // Store previous for color change
+                    this.previousPrices = { ...this.livePrices };
+                    this.livePrices = data;
+                    this.updateChart();
+                },
 
-            candleSeries.setData(historicalData);
+                priceClass(sym, price) {
+                    const prev = this.previousPrices[sym];
+                    if (prev && price > prev) return 'text-green-300 price-updated';
+                    if (prev && price < prev) return 'text-red-300 price-updated';
+                    return '';
+                },
 
-            // Draw TP/SL/Entry Lines visually
-            candleSeries.createPriceLine({ price: parseFloat(entryPrice), color: '#ffffff', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'ENTRY' });
-            candleSeries.createPriceLine({ price: parseFloat(tpPrice), color: '#00ff88', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: 'TP' });
-            candleSeries.createPriceLine({ price: parseFloat(slPrice), color: '#ff3366', lineWidth: 2, lineStyle: 1, axisLabelVisible: true, title: 'SL' });
+                formatPrice(price) {
+                    if (!price) return '--';
+                    if (price > 1000) return price.toFixed(0);
+                    if (price > 1) return price.toFixed(2);
+                    return price.toFixed(5);
+                },
 
-            chartInstance.timeScale().fitContent();
-        }
+                async generateTrade() {
+                    this.loading = true;
+                    let totalMinutes = this.duration;
+                    if (this.durationUnit === 'hours') totalMinutes *= 60;
+                    if (this.durationUnit === 'days') totalMinutes *= 1440;
 
-        async function generateTrade() {
-            const btn = document.getElementById('generateBtn');
-            const errorMsg = document.getElementById('error-msg');
-            const dashboard = document.getElementById('dashboard');
-            const tradeGrid = document.getElementById('tradeGrid');
-            const duration = document.getElementById('duration').value || 'Hours';
-
-            btn.disabled = true;
-            btn.innerText = "Analyzing Markets...";
-            errorMsg.style.display = 'none';
-
-            try {
-                const response = await fetch('/generate_trade', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ duration: duration })
-                });
-
-                const result = await response.json();
-
-                if (result.status === 'success') {
-                    const data = result.data;
-                    document.getElementById('out-session').innerText = `Session: ${data.session}`;
-                    document.getElementById('out-volatility').innerText = `Volatility: ${data.volatility}`;
-                    document.getElementById('out-asset').innerText = `${data.asset} (${data.type})`;
-                    
-                    const signalEl = document.getElementById('out-signal');
-                    signalEl.innerText = data.signal;
-                    signalEl.className = data.signal === 'LONG' ? 'signal-long' : 'signal-short';
-
-                    document.getElementById('out-price').innerText = data.price;
-                    document.getElementById('out-tp').innerText = data.tp;
-                    document.getElementById('out-sl').innerText = data.sl;
-                    document.getElementById('out-leverage').innerText = data.leverage;
-                    document.getElementById('out-logic').innerText = data.logic;
-
-                    dashboard.style.display = 'block';
-                    tradeGrid.style.display = 'grid';
-
-                    // Trigger Interactive Chart
-                    if (data.chart_data && data.chart_data.length > 0) {
-                        renderChart(data.chart_data, data.price, data.tp, data.sl);
+                    try {
+                        const res = await fetch('/api/scan', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ duration: totalMinutes })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            this.signal = data.signal;
+                        } else {
+                            alert(data.message);
+                        }
+                    } catch (e) {
+                        alert('Error generating trade');
+                    } finally {
+                        this.loading = false;
                     }
-                } else {
-                    errorMsg.innerText = result.message;
-                    errorMsg.style.display = 'block';
-                    dashboard.style.display = 'none';
-                }
-            } catch (err) {
-                errorMsg.innerText = "Connection failed. Please check Cloud Run logs.";
-                errorMsg.style.display = 'block';
-            }
+                },
 
-            btn.disabled = false;
-            btn.innerText = "Scan Market & Generate Trade";
+                updateChart() {
+                    // Simple chart of last few prices (for demo)
+                    if (!this.chart) {
+                        const ctx = document.getElementById('priceChart').getContext('2d');
+                        this.chart = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: ['1', '2', '3', '4', '5'],
+                                datasets: [{
+                                    label: 'BTC',
+                                    data: [65000, 64800, 65200, 64900, 65100],
+                                    borderColor: 'rgba(255,255,255,0.5)',
+                                    backgroundColor: 'transparent'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: { x: { display: false }, y: { display: false } },
+                                plugins: { legend: { display: false } }
+                            }
+                        });
+                    }
+                    // In real app, update chart with real data
+                }
+            }
         }
     </script>
 </body>
-                                                                      </html>
-    
+                                </html>
