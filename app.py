@@ -7,10 +7,11 @@ import pandas as pd
 import numpy as np
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import ta
 import logging
+import yfinance as yf
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,9 +20,8 @@ app = Flask(__name__)
 CORS(app)
 
 # ==================== CONFIGURATION ====================
-# Free API keys – set as environment variables in production
-GNEWS_API_KEY = os.environ.get('GNEWS_API_KEY', '')  # Get from https://gnews.io/
-EXCHANGERATE_API_KEY = os.environ.get('EXCHANGERATE_API_KEY', '')  # Get from https://exchangerate-api.com/
+GNEWS_API_KEY = os.environ.get('GNEWS_API_KEY', '')
+EXCHANGERATE_API_KEY = os.environ.get('EXCHANGERATE_API_KEY', '')
 
 # Asset lists (no metals)
 CRYPTO_SYMBOLS = [
@@ -47,48 +47,31 @@ SESSIONS = {
     'pacific': (22, 24)
 }
 
-# Cache for prices
+# Cache
 price_cache = {}
 price_cache_ts = {}
-CACHE_DURATION = 10  # seconds
+prev_price_cache = {}  # for change %
+CACHE_DURATION = 10
 
-last_asset = None  # To avoid repeats
+last_asset = None
 
 # ==================== DATA FETCHING ====================
 async def fetch_coingecko(symbol):
-    """Fetch crypto price from CoinGecko (no key required)"""
+    coin_map = {
+        'BTC/USD': 'bitcoin', 'ETH/USD': 'ethereum', 'BNB/USD': 'binancecoin',
+        'SOL/USD': 'solana', 'ADA/USD': 'cardano', 'XRP/USD': 'ripple',
+        'DOT/USD': 'polkadot', 'DOGE/USD': 'dogecoin', 'SHIB/USD': 'shiba-inu',
+        'AVAX/USD': 'avalanche-2', 'LINK/USD': 'chainlink', 'MATIC/USD': 'matic-network',
+        'LTC/USD': 'litecoin', 'BCH/USD': 'bitcoin-cash', 'ALGO/USD': 'algorand',
+        'XLM/USD': 'stellar', 'VET/USD': 'vechain', 'FIL/USD': 'filecoin',
+        'TRX/USD': 'tron', 'EOS/USD': 'eos', 'AAVE/USD': 'aave',
+        'MKR/USD': 'maker', 'YFI/USD': 'yearn-finance', 'SUSHI/USD': 'sushi',
+        'UNI/USD': 'uniswap'
+    }
+    coin_id = coin_map.get(symbol)
+    if not coin_id:
+        return None
     try:
-        # Map symbol to CoinGecko ID
-        coin_map = {
-            'BTC/USD': 'bitcoin',
-            'ETH/USD': 'ethereum',
-            'BNB/USD': 'binancecoin',
-            'SOL/USD': 'solana',
-            'ADA/USD': 'cardano',
-            'XRP/USD': 'ripple',
-            'DOT/USD': 'polkadot',
-            'DOGE/USD': 'dogecoin',
-            'SHIB/USD': 'shiba-inu',
-            'AVAX/USD': 'avalanche-2',
-            'LINK/USD': 'chainlink',
-            'MATIC/USD': 'matic-network',
-            'LTC/USD': 'litecoin',
-            'BCH/USD': 'bitcoin-cash',
-            'ALGO/USD': 'algorand',
-            'XLM/USD': 'stellar',
-            'VET/USD': 'vechain',
-            'FIL/USD': 'filecoin',
-            'TRX/USD': 'tron',
-            'EOS/USD': 'eos',
-            'AAVE/USD': 'aave',
-            'MKR/USD': 'maker',
-            'YFI/USD': 'yearn-finance',
-            'SUSHI/USD': 'sushi',
-            'UNI/USD': 'uniswap'
-        }
-        coin_id = coin_map.get(symbol)
-        if not coin_id:
-            return None
         url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
@@ -97,15 +80,12 @@ async def fetch_coingecko(symbol):
                 data = await resp.json()
                 return data.get(coin_id, {}).get('usd')
     except Exception as e:
-        logger.error(f"CoinGecko error for {symbol}: {e}")
+        logger.error(f"CoinGecko error {symbol}: {e}")
     return None
 
 async def fetch_frankfurter(symbol):
-    """Fetch forex price from Frankfurter (free, no key, EUR-based)"""
     try:
         base, quote = symbol.split('/')
-        # Frankfurter uses EUR as base, so we need to get rates
-        # For pairs involving EUR, direct; for others, derive
         if base == 'EUR':
             url = f"https://api.frankfurter.app/latest?from={base}&to={quote}"
             async with aiohttp.ClientSession() as session:
@@ -123,31 +103,24 @@ async def fetch_frankfurter(symbol):
                 rate = data['rates'].get(quote)
                 return 1/rate if rate else None
         else:
-            # Cross rate via EUR
-            url1 = f"https://api.frankfurter.app/latest?from=EUR&to={base}"
-            url2 = f"https://api.frankfurter.app/latest?from=EUR&to={quote}"
             async with aiohttp.ClientSession() as session:
+                url1 = f"https://api.frankfurter.app/latest?from=EUR&to={base}"
+                url2 = f"https://api.frankfurter.app/latest?from=EUR&to={quote}"
                 async with session.get(url1) as resp1, session.get(url2) as resp2:
                     if resp1.status != 200 or resp2.status != 200:
                         return None
                     data1 = await resp1.json()
                     data2 = await resp2.json()
-                    rate_base = data1['rates'].get(base)  # EUR to base
-                    rate_quote = data2['rates'].get(quote)  # EUR to quote
+                    rate_base = data1['rates'].get(base)
+                    rate_quote = data2['rates'].get(quote)
                     if rate_base and rate_quote:
-                        # base/usd = (eur/usd) / (eur/base) ??? Wait, careful.
-                        # We want base/quote = (base/eur) * (eur/quote)
-                        # base/eur = 1/(eur/base)
-                        base_per_eur = 1 / rate_base if rate_base else None
-                        eur_per_quote = rate_quote
-                        if base_per_eur and eur_per_quote:
-                            return base_per_eur * eur_per_quote
+                        base_per_eur = 1 / rate_base
+                        return base_per_eur * rate_quote
     except Exception as e:
-        logger.error(f"Frankfurter error for {symbol}: {e}")
+        logger.error(f"Frankfurter error {symbol}: {e}")
     return None
 
 async def fetch_exchangerate_api(symbol):
-    """Fetch forex price from ExchangeRate-API (free tier requires key)"""
     if not EXCHANGERATE_API_KEY:
         return None
     try:
@@ -161,11 +134,10 @@ async def fetch_exchangerate_api(symbol):
                 if data['result'] == 'success':
                     return data['conversion_rate']
     except Exception as e:
-        logger.error(f"ExchangeRate-API error for {symbol}: {e}")
+        logger.error(f"ExchangeRate-API error {symbol}: {e}")
     return None
 
 async def get_price(symbol):
-    """Get latest price using multiple free APIs with fallback"""
     now = time.time()
     if symbol in price_cache and now - price_cache_ts.get(symbol, 0) < CACHE_DURATION:
         return price_cache[symbol]
@@ -173,49 +145,34 @@ async def get_price(symbol):
     price = None
     if symbol in CRYPTO_SYMBOLS:
         price = await fetch_coingecko(symbol)
-        # No fallback for crypto except maybe mock (but CoinGecko is reliable)
-    else:  # forex
+    else:
         price = await fetch_frankfurter(symbol)
         if not price and EXCHANGERATE_API_KEY:
             price = await fetch_exchangerate_api(symbol)
 
-    # If still None, use a reasonable mock (for development only)
+    # Fallback mock (for development)
     if not price:
-        logger.warning(f"All APIs failed for {symbol}, using mock")
+        logger.warning(f"Using mock for {symbol}")
         mock_prices = {
             'BTC/USD': 60000, 'ETH/USD': 3000, 'EUR/USD': 1.08, 'GBP/USD': 1.27,
             'USD/JPY': 150.5, 'AUD/USD': 0.66
         }
         price = mock_prices.get(symbol, 1.0)
 
+    # Store previous for change %
+    if symbol in price_cache:
+        prev_price_cache[symbol] = price_cache[symbol]
     price_cache[symbol] = price
     price_cache_ts[symbol] = now
     return price
 
-# ==================== TECHNICAL INDICATORS ====================
+# ==================== HISTORICAL DATA ====================
 async def fetch_historical(symbol, interval='1h', bars=100):
-    """Fetch historical data from free sources"""
-    # For crypto, we can use CoinGecko historical; for forex, Frankfurter doesn't provide.
-    # We'll use a fallback: for crypto, use CoinGecko; for forex, we'll simulate or use another free API.
-    # To keep it simple, we'll use TwelveData's free demo? But that requires key.
-    # Instead, we'll use a local generator (not accurate) or skip indicators for forex?
-    # Given the requirement for real analysis, we need historical data. We'll use Alpha Vantage's free tier (demo key) – it's free but limited.
-    # But the user said "I don't want to put my one's use the free and put it in" – meaning they don't want to provide keys. So we'll use free APIs that don't require keys: for crypto, CoinGecko provides historical; for forex, we can use Frankfurter's historical? It doesn't. So we'll have to make a compromise: for forex, we'll use a simple volatility model based on recent price changes (simulated) or skip forex scanning? That's not ideal.
-    # Alternative: use Yahoo Finance (yfinance) – free, no key, but requires yfinance library. That might be acceptable.
-    # We'll add yfinance as a dependency and use it for both crypto and forex historical.
-    # However, yfinance may not have all forex pairs. We'll use it as a fallback.
-    # Let's implement using yfinance (async? we can use asyncio.to_thread).
-
-    # For now, we'll implement a placeholder that returns None for forex historical, and for crypto we'll use CoinGecko.
-    # But the bot needs indicators, so we must have historical data. We'll use yfinance.
-    import yfinance as yf
     try:
-        # Convert symbol to yfinance format
         if symbol in CRYPTO_SYMBOLS:
-            ticker = symbol.replace('/', '-')  # BTC-USD
+            ticker = symbol.replace('/', '-')
         else:
-            ticker = symbol.replace('/', '') + '=X'  # EURUSD=X
-        # Download data (async in thread)
+            ticker = symbol.replace('/', '') + '=X'
         loop = asyncio.get_event_loop()
         df = await loop.run_in_executor(None, lambda: yf.download(ticker, period='5d', interval='1h'))
         if df.empty:
@@ -225,22 +182,18 @@ async def fetch_historical(symbol, interval='1h', bars=100):
         df.rename(columns={'datetime': 'date'}, inplace=True)
         return df
     except Exception as e:
-        logger.error(f"yFinance error for {symbol}: {e}")
+        logger.error(f"yFinance error {symbol}: {e}")
         return None
 
+# ==================== INDICATORS ====================
 def compute_indicators(df):
-    """Compute all technical indicators on DataFrame"""
     if df is None or len(df) < 50:
         return None
-    # Ensure numeric
     df['close'] = pd.to_numeric(df['close'])
     df['high'] = pd.to_numeric(df['high'])
     df['low'] = pd.to_numeric(df['low'])
     df['open'] = pd.to_numeric(df['open'])
-    if 'volume' in df.columns:
-        df['volume'] = pd.to_numeric(df['volume'])
-    else:
-        df['volume'] = 0
+    df['volume'] = pd.to_numeric(df['volume']) if 'volume' in df else 0
     # EMAs
     df['ema7'] = ta.trend.ema_indicator(df['close'], window=7)
     df['ema9'] = ta.trend.ema_indicator(df['close'], window=9)
@@ -259,14 +212,13 @@ def compute_indicators(df):
     df['bb_mid'] = bb.bollinger_mavg()
     # ATR
     df['atr'] = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range()
-    # Support/Resistance (simplified: recent swing highs/lows)
+    # Swing highs/lows
     window = 10
     df['swing_high'] = df['high'].rolling(window, center=True).max()
     df['swing_low'] = df['low'].rolling(window, center=True).min()
     return df
 
 def detect_market_structure(df):
-    """Identify trend: HH/HL, LH/LL"""
     last_rows = df.tail(20)
     highs = last_rows['high'].values
     lows = last_rows['low'].values
@@ -292,18 +244,16 @@ def get_current_session():
 
 def calculate_atr_based_stop(entry, swing_level, atr, direction='long', multiplier=1.5):
     if direction == 'long':
-        stop = swing_level - (atr * multiplier)
+        return swing_level - (atr * multiplier)
     else:
-        stop = swing_level + (atr * multiplier)
-    return stop
+        return swing_level + (atr * multiplier)
 
 def calculate_tp(entry, stop, direction, risk_reward=2):
     risk = abs(entry - stop)
     if direction == 'long':
-        tp = entry + (risk * risk_reward)
+        return entry + (risk * risk_reward)
     else:
-        tp = entry - (risk * risk_reward)
-    return tp
+        return entry - (risk * risk_reward)
 
 def adjust_tp_for_duration(entry, tp, direction, duration_minutes, atr_per_hour):
     distance = abs(tp - entry)
@@ -319,22 +269,22 @@ def adjust_tp_for_duration(entry, tp, direction, duration_minutes, atr_per_hour)
 
 def calculate_dynamic_leverage(asset_class, atr_percent, session_volatility_factor=1.0):
     if asset_class == 'crypto':
-        base_leverage = 5
-    else:  # forex
-        base_leverage = 10
+        base = 5
+    else:
+        base = 10
     vol_factor = max(0.2, min(1.0, 1.0 - (atr_percent * 10)))
-    leverage = int(base_leverage * vol_factor * session_volatility_factor)
+    leverage = int(base * vol_factor * session_volatility_factor)
     return max(1, min(leverage, 50))
 
 def get_asset_class(symbol):
     return 'crypto' if symbol in CRYPTO_SYMBOLS else 'forex'
 
-# ==================== NEWS SENTIMENT ====================
+# ==================== NEWS ====================
 async def fetch_gnews(query):
     if not GNEWS_API_KEY:
         return None
     try:
-        url = f"https://gnews.io/api/v4/search?q={query}&token={GNEWS_API_KEY}&lang=en&max=3"
+        url = f"https://gnews.io/api/v4/search?q={query}&token={GNEWS_API_KEY}&lang=en&max=5"
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
@@ -342,6 +292,7 @@ async def fetch_gnews(query):
                 data = await resp.json()
                 articles = data.get('articles', [])
                 headlines = [a['title'] for a in articles]
+                # Simple sentiment
                 sentiment = 'neutral'
                 for title in headlines:
                     lower = title.lower()
@@ -349,19 +300,25 @@ async def fetch_gnews(query):
                         sentiment = 'bullish'
                     elif any(w in lower for w in ['bear', 'crash', 'plunge', 'drop']):
                         sentiment = 'bearish'
-                return {'sentiment': sentiment, 'headlines': headlines}
+                return {'sentiment': sentiment, 'headlines': headlines, 'articles': articles}
     except Exception as e:
         logger.error(f"GNews error: {e}")
     return None
 
-async def fetch_news(asset_class, symbol):
-    query = symbol.split('/')[0]
-    if query in ['XAU', 'XAG']:  # should not happen now
-        return {'sentiment': 'neutral', 'headlines': []}
+async def fetch_news_for_class(asset_class):
+    """Fetch news relevant to the asset class (crypto/forex)"""
+    if asset_class == 'crypto':
+        query = 'cryptocurrency OR bitcoin OR ethereum'
+    else:
+        query = 'forex OR foreign exchange OR currency market'
     news = await fetch_gnews(query)
     if news:
         return news
-    return {'sentiment': 'neutral', 'headlines': []}
+    return {'sentiment': 'neutral', 'headlines': [], 'articles': []}
+
+async def fetch_news_for_asset(symbol):
+    asset = symbol.split('/')[0]
+    return await fetch_gnews(asset)
 
 # ==================== SIGNAL GENERATION ====================
 async def scan_symbol(symbol, duration_minutes):
@@ -382,42 +339,39 @@ async def scan_symbol(symbol, duration_minutes):
         return None
 
     latest = df.iloc[-1]
-    prev = df.iloc[-2]
-
     trend = detect_market_structure(df)
     session = get_current_session()
-
     atr = latest['atr']
     atr_percent = atr / price
 
     long_score = 0
     short_score = 0
 
-    # Condition 1: EMAs
+    # EMA
     if latest['ema7'] > latest['ema9'] > latest['ema21']:
         long_score += 1
     elif latest['ema7'] < latest['ema9'] < latest['ema21']:
         short_score += 1
 
-    # Condition 2: MACD
+    # MACD
     if latest['macd'] > latest['macd_signal'] and latest['macd_hist'] > 0:
         long_score += 1
     elif latest['macd'] < latest['macd_signal'] and latest['macd_hist'] < 0:
         short_score += 1
 
-    # Condition 3: RSI
+    # RSI
     if latest['rsi'] < 30 and trend == 'uptrend':
         long_score += 1
     elif latest['rsi'] > 70 and trend == 'downtrend':
         short_score += 1
 
-    # Condition 4: Bollinger Bands
+    # Bollinger
     if price <= latest['bb_lower'] and latest['close'] > latest['bb_lower']:
         long_score += 1
     elif price >= latest['bb_upper'] and latest['close'] < latest['bb_upper']:
         short_score += 1
 
-    # Condition 5: Support/Resistance
+    # Support/Resistance
     swing_low = latest['swing_low']
     swing_high = latest['swing_high']
     if price <= swing_low * 1.01 and latest['close'] > price:
@@ -433,11 +387,13 @@ async def scan_symbol(symbol, duration_minutes):
     else:
         return None
 
-    news = await fetch_news(get_asset_class(symbol), symbol)
-    if news['sentiment'] == 'bearish' and direction == 'long':
-        return None
-    if news['sentiment'] == 'bullish' and direction == 'short':
-        return None
+    # News filter
+    news = await fetch_news_for_asset(symbol)
+    if news:
+        if news['sentiment'] == 'bearish' and direction == 'long':
+            return None
+        if news['sentiment'] == 'bullish' and direction == 'short':
+            return None
 
     entry = price
     if direction == 'long':
@@ -458,12 +414,18 @@ async def scan_symbol(symbol, duration_minutes):
         tp = entry - (atr * 1.5)
 
     asset_class = get_asset_class(symbol)
-    session_volatility_factor = 1.0
-    if session in ['asia']:
-        session_volatility_factor = 0.8
-    elif session in ['ny']:
-        session_volatility_factor = 1.2
-    leverage = calculate_dynamic_leverage(asset_class, atr_percent, session_volatility_factor)
+    session_vol_factor = 1.0
+    if session == 'asia':
+        session_vol_factor = 0.8
+    elif session == 'ny':
+        session_vol_factor = 1.2
+    leverage = calculate_dynamic_leverage(asset_class, atr_percent, session_vol_factor)
+
+    # Prepare news impact summary
+    news_summary = ""
+    if news and news['headlines']:
+        top_headline = news['headlines'][0]
+        news_summary = f"Recent news: {top_headline}. This could impact {symbol} by affecting market sentiment."
 
     signal = {
         'asset': symbol,
@@ -476,8 +438,9 @@ async def scan_symbol(symbol, duration_minutes):
         'session': session,
         'trend': trend,
         'confidence': min(95, int((long_score if direction=='long' else short_score) * 20)),
-        'news': news['headlines'][0] if news['headlines'] else 'No major news',
-        'reason': f"{direction.upper()} signal due to {long_score if direction=='long' else short_score} indicators confluence, ATR-adjusted SL, TP based on {duration_minutes}min duration.",
+        'news': news['headlines'][0] if news and news['headlines'] else 'No major news',
+        'news_sentiment': news['sentiment'] if news else 'neutral',
+        'reason': f"{direction.upper()} signal due to {long_score if direction=='long' else short_score} indicators confluence. ATR-adjusted SL gives breathing room. TP adjusted for {duration_minutes} min duration. {news_summary}",
         'tp_percent': round(abs((tp - entry)/entry)*100, 2),
         'sl_percent': round(abs((stop - entry)/entry)*100, 2),
         'entry_price': round(entry, 5),
@@ -485,10 +448,16 @@ async def scan_symbol(symbol, duration_minutes):
     }
     return signal
 
-async def scan_all(duration_minutes):
-    # Limit to top 10 crypto + 10 forex for speed
-    symbols_to_scan = CRYPTO_SYMBOLS[:10] + FOREX_SYMBOLS[:10]
-    tasks = [scan_symbol(sym, duration_minutes) for sym in symbols_to_scan]
+async def scan_all(asset_class, duration_minutes):
+    """Scan only the selected asset class"""
+    if asset_class == 'crypto':
+        symbols = CRYPTO_SYMBOLS[:15]  # limit for speed
+    elif asset_class == 'forex':
+        symbols = FOREX_SYMBOLS[:10]
+    else:
+        symbols = CRYPTO_SYMBOLS[:10] + FOREX_SYMBOLS[:10]
+
+    tasks = [scan_symbol(sym, duration_minutes) for sym in symbols]
     results = await asyncio.gather(*tasks)
     signals = [r for r in results if r is not None]
     if not signals:
@@ -496,14 +465,32 @@ async def scan_all(duration_minutes):
     best = max(signals, key=lambda x: x['confidence'])
     return best
 
-# ==================== BACKGROUND TASKS ====================
-def update_prices_periodically():
+# ==================== HEAT MAP DATA ====================
+async def get_heatmap_data(asset_class):
+    """Return list of {symbol, price, change} for the class"""
+    symbols = CRYPTO_SYMBOLS if asset_class == 'crypto' else FOREX_SYMBOLS
+    result = []
+    for sym in symbols[:25]:  # all
+        price = await get_price(sym)
+        prev = prev_price_cache.get(sym, price)
+        change = ((price - prev) / prev) * 100 if prev else 0
+        result.append({
+            'symbol': sym,
+            'price': round(price, 5) if price else 0,
+            'change': round(change, 2)
+        })
+    return result
+
+# ==================== BACKGROUND PRICE UPDATER ====================
+def update_prices():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     while True:
-        for sym in ALL_SYMBOLS[:20]:  # limit to avoid rate limits
-            asyncio.run(get_price(sym))
+        for sym in ALL_SYMBOLS[:20]:
+            loop.run_until_complete(get_price(sym))
         time.sleep(30)
 
-threading.Thread(target=update_prices_periodically, daemon=True).start()
+threading.Thread(target=update_prices, daemon=True).start()
 
 # ==================== FLASK ROUTES ====================
 @app.route('/')
@@ -512,4 +499,54 @@ def index():
 
 @app.route('/api/scan', methods=['POST'])
 def api_scan():
-    data
+    data = request.json
+    asset_class = data.get('asset_class', 'all')
+    duration = data.get('duration', 60)
+    try:
+        duration = int(duration)
+    except:
+        duration = 60
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        best_signal = loop.run_until_complete(scan_all(asset_class, duration))
+    except Exception as e:
+        logger.exception("Scan error")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+    if best_signal:
+        global last_asset
+        last_asset = best_signal['asset']
+        return jsonify({'success': True, 'signal': best_signal})
+    else:
+        return jsonify({'success': False, 'message': 'No high-probability trade found for this selection.'})
+
+@app.route('/api/prices', methods=['POST'])
+def api_prices():
+    data = request.json
+    asset_class = data.get('asset_class', 'crypto')
+    symbols = CRYPTO_SYMBOLS if asset_class == 'crypto' else FOREX_SYMBOLS
+    symbols = symbols[:15]  # limit
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    tasks = [get_price(sym) for sym in symbols]
+    prices = loop.run_until_complete(asyncio.gather(*tasks))
+    result = {sym: price for sym, price in zip(symbols, prices)}
+    return jsonify(result)
+
+@app.route('/api/news', methods=['POST'])
+def api_news():
+    data = request.json
+    asset_class = data.get('asset_class', 'crypto')
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    news = loop.run_until_complete(fetch_news_for_class(asset_class))
+    return jsonify(news)
+
+@app.route('/api/heatmap', methods=['POST'])
+def api_heatmap():
+    data = request.json
+    asset_class = data.get('asset_class', 'crypto')
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    heat = loop.run_unti
