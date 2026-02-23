@@ -549,4 +549,12 @@ def api_heatmap():
     asset_class = data.get('asset_class', 'crypto')
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    heat = loop.run_unti
+    heat = loop.run_until_complete(get_heatmap_data(asset_class))
+    return jsonify(heat)
+
+@app.route('/api/session')
+def api_session():
+    return jsonify({'session': get_current_session()})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=False)
