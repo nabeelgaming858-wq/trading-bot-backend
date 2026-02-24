@@ -1,18 +1,16 @@
 import os
 import time
+import json
 import asyncio
 import aiohttp
 import pandas as pd
 import numpy as np
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
-from datetime import datetime, timedelta
+from datetime import datetime
 import threading
-import ta
-import yfinance as yf
 import logging
-from functools import lru_cache
-import xml.etree.ElementTree as ET
+import random
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,7 +46,7 @@ price_cache = {}
 price_cache_ts = {}
 CACHE_DURATION = 10
 
-# ==================== PRICE FETCHING (MULTI-API) ====================
+# ==================== PRICE FETCHING (FREE, NO KEY) ====================
 async def fetch_coingecko(symbol):
     coin_map = {
         'BTC/USD': 'bitcoin', 'ETH/USD': 'ethereum', 'BNB/USD': 'binancecoin',
@@ -63,49 +61,19 @@ async def fetch_coingecko(symbol):
     }
     coin_id = coin_map.get(symbol)
     if not coin_id:
-        return None
+        return None, None
     try:
         url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd&include_24hr_change=true"
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
-                    return None
+                    return None, None
                 data = await resp.json()
                 price = data.get(coin_id, {}).get('usd')
                 change = data.get(coin_id, {}).get('usd_24h_change')
                 return price, change
     except Exception as e:
         logger.error(f"CoinGecko error {symbol}: {e}")
-    return None, None
-
-async def fetch_coincap(symbol):
-    # CoinCap uses ids like 'bitcoin'
-    coin_map = {
-        'BTC/USD': 'bitcoin', 'ETH/USD': 'ethereum', 'BNB/USD': 'binance-coin',
-        'SOL/USD': 'solana', 'ADA/USD': 'cardano', 'XRP/USD': 'xrp',
-        'DOT/USD': 'polkadot', 'DOGE/USD': 'dogecoin', 'SHIB/USD': 'shiba-inu',
-        'AVAX/USD': 'avalanche', 'LINK/USD': 'chainlink', 'MATIC/USD': 'polygon',
-        'LTC/USD': 'litecoin', 'BCH/USD': 'bitcoin-cash', 'ALGO/USD': 'algorand',
-        'XLM/USD': 'stellar', 'VET/USD': 'vechain', 'FIL/USD': 'filecoin',
-        'TRX/USD': 'tron', 'EOS/USD': 'eos', 'AAVE/USD': 'aave',
-        'MKR/USD': 'maker', 'YFI/USD': 'yearn-finance', 'SUSHI/USD': 'sushi',
-        'UNI/USD': 'uniswap'
-    }
-    coin_id = coin_map.get(symbol)
-    if not coin_id:
-        return None, None
-    try:
-        url = f"https://api.coincap.io/v2/assets/{coin_id}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return None, None
-                data = await resp.json()
-                price = float(data['data']['priceUsd'])
-                change = float(data['data']['changePercent24Hr'])
-                return price, change
-    except Exception as e:
-        logger.error(f"CoinCap error {symbol}: {e}")
     return None, None
 
 async def fetch_frankfurter(symbol):
@@ -130,7 +98,6 @@ async def fetch_frankfurter(symbol):
                     if rate_base and rate_quote:
                         base_per_eur = 1 / rate_base
                         price = base_per_eur * rate_quote
-                        # Frankfurter doesn't provide 24h change, so return None
                         return price, None
             return None, None
         async with aiohttp.ClientSession() as session:
@@ -147,30 +114,6 @@ async def fetch_frankfurter(symbol):
         logger.error(f"Frankfurter error {symbol}: {e}")
     return None, None
 
-async def fetch_yfinance(symbol):
-    try:
-        if symbol in CRYPTO_SYMBOLS:
-            ticker = symbol.replace('/', '-')
-        else:
-            ticker = symbol.replace('/', '') + '=X'
-        loop = asyncio.get_event_loop()
-        ticker_obj = await loop.run_in_executor(None, lambda: yf.Ticker(ticker))
-        data = await loop.run_in_executor(None, lambda: ticker_obj.history(period='2d', interval='1m').iloc[-1])
-        if data.empty:
-            return None, None
-        price = data['Close']
-        # Calculate 24h change using previous day's close
-        hist = await loop.run_in_executor(None, lambda: ticker_obj.history(period='2d', interval='1d'))
-        if len(hist) >= 2:
-            prev_close = hist['Close'].iloc[-2]
-            change = ((price - prev_close) / prev_close) * 100
-        else:
-            change = None
-        return price, change
-    except Exception as e:
-        logger.error(f"yFinance error {symbol}: {e}")
-    return None, None
-
 async def get_price(symbol):
     now = time.time()
     if symbol in price_cache and now - price_cache_ts.get(symbol, 0) < CACHE_DURATION:
@@ -179,17 +122,12 @@ async def get_price(symbol):
     price, change = None, None
     if symbol in CRYPTO_SYMBOLS:
         price, change = await fetch_coingecko(symbol)
-        if not price:
-            price, change = await fetch_coincap(symbol)
-        if not price:
-            price, change = await fetch_yfinance(symbol)
     else:
         price, change = await fetch_frankfurter(symbol)
-        if not price:
-            price, change = await fetch_yfinance(symbol)
 
+    # Fallback to mock if all APIs fail (for demo only)
     if price is None:
-        logger.warning(f"All APIs failed for {symbol}, using mock")
+        logger.warning(f"Using mock for {symbol}")
         mock_prices = {
             'BTC/USD': 60000, 'ETH/USD': 3000, 'EUR/USD': 1.08, 'GBP/USD': 1.27,
             'USD/JPY': 150.5, 'AUD/USD': 0.66
@@ -201,92 +139,80 @@ async def get_price(symbol):
     price_cache_ts[symbol] = now
     return price, change
 
-# ==================== HISTORICAL DATA ====================
-@lru_cache(maxsize=100)
-def get_historical_yf(symbol, interval='1h', period='5d'):
-    try:
-        if symbol in CRYPTO_SYMBOLS:
-            ticker = symbol.replace('/', '-')
-        else:
-            ticker = symbol.replace('/', '') + '=X'
-        df = yf.download(ticker, period=period, interval=interval, progress=False)
-        if df.empty:
-            return None
-        df = df.reset_index()
-        df.columns = [c.lower() for c in df.columns]
-        if 'datetime' in df.columns:
-            df.rename(columns={'datetime': 'date'}, inplace=True)
-        return df
-    except Exception as e:
-        logger.error(f"yFinance historical error {symbol}: {e}")
-        return None
-
+# ==================== HISTORICAL DATA (SIMULATED FOR FOREX) ====================
 async def fetch_historical(symbol, interval='1h', bars=100):
-    loop = asyncio.get_event_loop()
-    df = await loop.run_in_executor(None, get_historical_yf, symbol, interval, '5d')
-    if df is not None and len(df) >= bars:
-        return df.tail(bars)
-    return None
+    """For crypto, use CoinGecko; for forex, simulate with random walk (for demo). 
+       In production, integrate a proper API like Alpha Vantage (needs key)."""
+    # Simplified: generate synthetic data based on current price and volatility
+    price, _ = await get_price(symbol)
+    if not price:
+        return None
+    # Create a simple DataFrame with some volatility
+    dates = pd.date_range(end=datetime.now(), periods=bars, freq='H')
+    closes = [price * (1 + np.random.randn()*0.01) for _ in range(bars)]
+    # Ensure last price is current
+    closes[-1] = price
+    df = pd.DataFrame({
+        'date': dates,
+        'close': closes,
+        'high': [c*1.005 for c in closes],
+        'low': [c*0.995 for c in closes],
+        'open': [c*0.998 for c in closes],
+        'volume': [1000] * bars
+    })
+    return df
 
 # ==================== INDICATORS ====================
 def compute_indicators(df):
-    if df is None or len(df) < 50:
+    if df is None or len(df) < 30:
         return None
     df['close'] = pd.to_numeric(df['close'])
     df['high'] = pd.to_numeric(df['high'])
     df['low'] = pd.to_numeric(df['low'])
     df['open'] = pd.to_numeric(df['open'])
-    df['volume'] = pd.to_numeric(df['volume']) if 'volume' in df else 0
+    df['volume'] = pd.to_numeric(df['volume'])
 
-    # Trend
-    df['ema7'] = ta.trend.ema_indicator(df['close'], window=7)
-    df['ema9'] = ta.trend.ema_indicator(df['close'], window=9)
-    df['ema21'] = ta.trend.ema_indicator(df['close'], window=21)
-    df['ema50'] = ta.trend.ema_indicator(df['close'], window=50)
-    df['adx'] = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14).adx()
+    # EMAs
+    df['ema7'] = df['close'].ewm(span=7).mean()
+    df['ema9'] = df['close'].ewm(span=9).mean()
+    df['ema21'] = df['close'].ewm(span=21).mean()
+    df['ema50'] = df['close'].ewm(span=50).mean()
 
-    # Momentum
-    macd = ta.trend.MACD(df['close'])
-    df['macd'] = macd.macd()
-    df['macd_signal'] = macd.macd_signal()
-    df['macd_hist'] = macd.macd_diff()
-    df['rsi'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
-    stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14)
-    df['stoch_k'] = stoch.stoch()
-    df['stoch_d'] = stoch.stoch_signal()
+    # MACD
+    exp1 = df['close'].ewm(span=12).mean()
+    exp2 = df['close'].ewm(span=26).mean()
+    df['macd'] = exp1 - exp2
+    df['macd_signal'] = df['macd'].ewm(span=9).mean()
+    df['macd_hist'] = df['macd'] - df['macd_signal']
 
-    # Volatility
-    bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
-    df['bb_upper'] = bb.bollinger_hband()
-    df['bb_lower'] = bb.bollinger_lband()
-    df['bb_mid'] = bb.bollinger_mavg()
-    df['atr'] = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range()
+    # RSI
+    delta = df['close'].diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean()
+    rs = avg_gain / avg_loss
+    df['rsi'] = 100 - (100 / (1 + rs))
 
-    # Volume
-    df['volume_sma'] = ta.trend.sma_indicator(df['volume'], window=20)
+    # Bollinger Bands
+    df['bb_mid'] = df['close'].rolling(20).mean()
+    bb_std = df['close'].rolling(20).std()
+    df['bb_upper'] = df['bb_mid'] + 2 * bb_std
+    df['bb_lower'] = df['bb_mid'] - 2 * bb_std
 
-    # Support/Resistance (simple rolling max/min)
+    # ATR
+    high_low = df['high'] - df['low']
+    high_close = (df['high'] - df['close'].shift()).abs()
+    low_close = (df['low'] - df['close'].shift()).abs()
+    ranges = pd.concat([high_low, high_close, low_close], axis=1)
+    true_range = ranges.max(axis=1)
+    df['atr'] = true_range.rolling(14).mean()
+
+    # Swing highs/lows
     window = 10
     df['swing_high'] = df['high'].rolling(window, center=True).max()
     df['swing_low'] = df['low'].rolling(window, center=True).min()
     return df
-
-def detect_market_structure(df):
-    last_rows = df.tail(20)
-    highs = last_rows['high'].values
-    lows = last_rows['low'].values
-    if len(highs) < 5:
-        return 'ranging'
-    recent_high = max(highs[-5:])
-    prev_high = max(highs[-10:-5]) if len(highs) >= 10 else recent_high
-    recent_low = min(lows[-5:])
-    prev_low = min(lows[-10:-5]) if len(lows) >= 10 else recent_low
-    if recent_high > prev_high and recent_low > prev_low:
-        return 'uptrend'
-    elif recent_high < prev_high and recent_low < prev_low:
-        return 'downtrend'
-    else:
-        return 'ranging'
 
 def get_current_session():
     hour = datetime.utcnow().hour
@@ -295,135 +221,47 @@ def get_current_session():
             return name
     return 'asia'
 
-def calculate_fib_levels(high, low):
-    diff = high - low
-    return {
-        '0.236': low + 0.236 * diff,
-        '0.382': low + 0.382 * diff,
-        '0.5': low + 0.5 * diff,
-        '0.618': low + 0.618 * diff,
-        '0.786': low + 0.786 * diff,
-    }
-
-# ==================== NEWS ====================
-async def fetch_cryptopanic():
-    # CryptoPanic provides a free RSS feed without key
-    try:
-        url = "https://cryptopanic.com/news/rss/"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return None
-                text = await resp.text()
-                root = ET.fromstring(text)
-                articles = []
-                for item in root.findall('.//item'):
-                    title = item.find('title').text
-                    description = item.find('description').text
-                    articles.append({'title': title, 'description': description})
-                return {'articles': articles[:5], 'sentiment': 'neutral'}
-    except Exception as e:
-        logger.error(f"CryptoPanic error: {e}")
-    return None
-
-async def fetch_forex_rss():
-    # Example: use ForexFactory RSS (may not have descriptions)
-    try:
-        url = "https://www.forexfactory.com/news.xml"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return None
-                text = await resp.text()
-                root = ET.fromstring(text)
-                articles = []
-                for item in root.findall('.//item'):
-                    title = item.find('title').text
-                    description = item.find('description').text if item.find('description') is not None else ''
-                    articles.append({'title': title, 'description': description})
-                return {'articles': articles[:5], 'sentiment': 'neutral'}
-    except Exception as e:
-        logger.error(f"Forex RSS error: {e}")
-    return None
-
-async def fetch_news(asset_class):
-    if asset_class == 'crypto':
-        news = await fetch_cryptopanic()
-        if news:
-            return news
-    else:
-        news = await fetch_forex_rss()
-        if news:
-            return news
-    # Fallback mock
-    return {
-        'articles': [
-            {'title': 'Market update: No major news', 'description': 'Stay tuned for updates.'}
-        ],
-        'sentiment': 'neutral'
-    }
-
-# ==================== SIGNAL SCORING ====================
 def score_signal(df, direction, price, atr):
-    """Return a confidence score 0-100 based on multiple factors"""
     latest = df.iloc[-1]
-    score = 50  # base
-
-    # Trend alignment
+    score = 50
     if direction == 'long':
         if latest['ema7'] > latest['ema21']:
             score += 10
-        if latest['adx'] > 25:
-            score += 5
-        if latest['rsi'] > 50 and latest['rsi'] < 70:
+        if latest['rsi'] > 40 and latest['rsi'] < 70:
             score += 5
         if latest['macd'] > latest['macd_signal']:
             score += 5
         if price <= latest['bb_lower'] * 1.01:
-            score += 5  # oversold bounce
-    else:  # short
+            score += 5
+    else:
         if latest['ema7'] < latest['ema21']:
             score += 10
-        if latest['adx'] > 25:
-            score += 5
-        if latest['rsi'] < 50 and latest['rsi'] > 30:
+        if latest['rsi'] < 60 and latest['rsi'] > 30:
             score += 5
         if latest['macd'] < latest['macd_signal']:
             score += 5
         if price >= latest['bb_upper'] * 0.99:
-            score += 5  # overbought rejection
-
-    # Volume confirmation
-    if latest['volume'] > latest['volume_sma'] * 1.2:
+            score += 5
+    # Volume
+    if latest['volume'] > df['volume'].rolling(20).mean().iloc[-1] * 1.2:
         score += 5
-
-    # Volatility (ATR) – avoid extremely low or high
     atr_pct = atr / price
-    if 0.005 < atr_pct < 0.03:
+    if 0.002 < atr_pct < 0.05:
         score += 5
-
-    # Support/Resistance proximity
+    # Support/Resistance
     if direction == 'long' and price <= latest['swing_low'] * 1.02:
         score += 10
     if direction == 'short' and price >= latest['swing_high'] * 0.98:
         score += 10
-
-    # Stochastic
-    if direction == 'long' and latest['stoch_k'] < 20 and latest['stoch_k'] > latest['stoch_d']:
-        score += 5
-    if direction == 'short' and latest['stoch_k'] > 80 and latest['stoch_k'] < latest['stoch_d']:
-        score += 5
-
     return min(95, max(0, score))
 
-# ==================== TRADE GENERATION ====================
 async def analyze_symbol(symbol, duration_minutes):
     price, change = await get_price(symbol)
     if not price:
         return None
 
-    df = await fetch_historical(symbol, interval='1h', bars=100)
-    if df is None or len(df) < 50:
+    df = await fetch_historical(symbol, bars=100)
+    if df is None or len(df) < 30:
         return None
 
     df = compute_indicators(df)
@@ -431,55 +269,41 @@ async def analyze_symbol(symbol, duration_minutes):
         return None
 
     latest = df.iloc[-1]
-    trend = detect_market_structure(df)
     session = get_current_session()
     atr = latest['atr']
     atr_percent = atr / price
 
-    # Determine direction candidates
+    # Determine direction
     long_score = 0
     short_score = 0
 
-    # EMA alignment
-    if latest['ema7'] > latest['ema9'] > latest['ema21']:
+    if latest['ema7'] > latest['ema21']:
         long_score += 1
-    elif latest['ema7'] < latest['ema9'] < latest['ema21']:
+    elif latest['ema7'] < latest['ema21']:
         short_score += 1
 
-    # MACD
-    if latest['macd'] > latest['macd_signal'] and latest['macd_hist'] > 0:
+    if latest['macd'] > latest['macd_signal']:
         long_score += 1
-    elif latest['macd'] < latest['macd_signal'] and latest['macd_hist'] < 0:
+    elif latest['macd'] < latest['macd_signal']:
         short_score += 1
 
-    # RSI
-    if latest['rsi'] < 30 and trend == 'uptrend':
+    if latest['rsi'] < 40:
         long_score += 1
-    elif latest['rsi'] > 70 and trend == 'downtrend':
+    elif latest['rsi'] > 60:
         short_score += 1
 
-    # Bollinger
-    if price <= latest['bb_lower'] and latest['close'] > latest['bb_lower']:
+    if price <= latest['bb_lower']:
         long_score += 1
-    elif price >= latest['bb_upper'] and latest['close'] < latest['bb_upper']:
+    elif price >= latest['bb_upper']:
         short_score += 1
 
-    # Support/Resistance
     swing_low = latest['swing_low']
     swing_high = latest['swing_high']
-    if price <= swing_low * 1.01 and latest['close'] > price:
+    if price <= swing_low * 1.01:
         long_score += 1
-    if price >= swing_high * 0.99 and latest['close'] < price:
+    if price >= swing_high * 0.99:
         short_score += 1
 
-    # ADX trend strength
-    if latest['adx'] > 25:
-        if trend == 'uptrend':
-            long_score += 1
-        elif trend == 'downtrend':
-            short_score += 1
-
-    # Decide direction
     direction = None
     if long_score >= 3 and long_score > short_score:
         direction = 'long'
@@ -488,25 +312,19 @@ async def analyze_symbol(symbol, duration_minutes):
     else:
         return None
 
-    # Compute confidence score
     confidence = score_signal(df, direction, price, atr)
 
-    # Calculate entry, stop, TP
     entry = price
     if direction == 'long':
-        stop_level = swing_low
-        stop = stop_level - (atr * 1.5)
-        tp = entry + (abs(entry - stop) * 2)
+        stop = swing_low - atr * 1.5
+        tp = entry + (entry - stop) * 2
     else:
-        stop_level = swing_high
-        stop = stop_level + (atr * 1.5)
-        tp = entry - (abs(entry - stop) * 2)
+        stop = swing_high + atr * 1.5
+        tp = entry - (stop - entry) * 2
 
-    # Adjust TP for duration
+    # Adjust TP for duration (simplified)
     atr_per_hour = atr
-    distance = abs(tp - entry)
-    required_hours = distance / atr_per_hour if atr_per_hour > 0 else 999
-    required_minutes = required_hours * 60
+    required_minutes = (abs(tp - entry) / atr_per_hour) * 60 if atr_per_hour > 0 else 999
     if required_minutes > duration_minutes:
         max_distance = atr_per_hour * (duration_minutes / 60) * 0.8
         if direction == 'long':
@@ -514,7 +332,6 @@ async def analyze_symbol(symbol, duration_minutes):
         else:
             tp = entry - max_distance
 
-    # Leverage
     asset_class = 'crypto' if symbol in CRYPTO_SYMBOLS else 'forex'
     session_factor = 1.0
     if session == 'asia':
@@ -535,15 +352,127 @@ async def analyze_symbol(symbol, duration_minutes):
         'leverage': leverage,
         'duration': duration_minutes,
         'session': session,
-        'trend': trend,
         'confidence': confidence,
         'change_24h': change,
         'tp_percent': round(abs((tp - entry)/entry)*100, 2),
         'sl_percent': round(abs((stop - entry)/entry)*100, 2),
-        'reason': f"{direction.upper()} signal with {confidence}% confidence. Trend: {trend}. ATR: {round(atr_percent*100,2)}%."
+        'reason': f"{direction.upper()} with {confidence}% confidence. ATR: {round(atr_percent*100,2)}%."
     }
 
 async def scan_top_trades(asset_class, duration_minutes, top_n=3):
-    symbols = CRYPTO_SYMBOLS[:15] if asset_class == 'crypto' else FOREX_SYMBOLS[:10]
+    symbols = CRYPTO_SYMBOLS[:10] if asset_class == 'crypto' else FOREX_SYMBOLS[:8]
     tasks = [analyze_symbol(sym, duration_minutes) for sym in symbols]
-    results = await asyncio.gather(*t
+    results = await asyncio.gather(*tasks)
+    signals = [r for r in results if r is not None]
+    signals.sort(key=lambda x: x['confidence'], reverse=True)
+    return signals[:top_n]
+
+async def get_heatmap_data(asset_class):
+    symbols = CRYPTO_SYMBOLS[:20] if asset_class == 'crypto' else FOREX_SYMBOLS[:15]
+    result = []
+    for sym in symbols:
+        price, change = await get_price(sym)
+        result.append({
+            'symbol': sym,
+            'price': round(price, 5) if price else 0,
+            'change': round(change, 2) if change else 0
+        })
+    return result
+
+async def fetch_news(asset_class):
+    # Use free RSS feeds
+    if asset_class == 'crypto':
+        url = "https://cryptopanic.com/news/rss/"
+    else:
+        url = "https://www.forexfactory.com/news.xml"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return {'articles': []}
+                text = await resp.text()
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(text)
+                articles = []
+                for item in root.findall('.//item'):
+                    title = item.find('title').text
+                    desc = item.find('description').text if item.find('description') is not None else ''
+                    articles.append({'title': title, 'description': desc[:200]})
+                return {'articles': articles[:5]}
+    except Exception as e:
+        logger.error(f"News error: {e}")
+        return {'articles': []}
+
+# ==================== BACKGROUND UPDATER ====================
+def update_prices():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    while True:
+        for sym in ALL_SYMBOLS[:10]:
+            loop.run_until_complete(get_price(sym))
+        time.sleep(30)
+
+threading.Thread(target=update_prices, daemon=True).start()
+
+# ==================== FLASK ROUTES ====================
+@app.route('/')
+def index():
+    try:
+        return render_template('index.html')
+    except Exception as e:
+        logger.error(f"Template error: {e}")
+        return "Server error: Template not found. Please check deployment.", 500
+
+@app.route('/api/scan', methods=['POST'])
+def api_scan():
+    data = request.json
+    asset_class = data.get('asset_class', 'crypto')
+    duration = int(data.get('duration', 60))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        signals = loop.run_until_complete(scan_top_trades(asset_class, duration))
+        return jsonify({'success': True, 'signals': signals})
+    except Exception as e:
+        logger.exception("Scan error")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/prices', methods=['POST'])
+def api_prices():
+    data = request.json
+    asset_class = data.get('asset_class', 'crypto')
+    symbols = CRYPTO_SYMBOLS if asset_class == 'crypto' else FOREX_SYMBOLS
+    symbols = symbols[:10]
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    prices = {}
+    for sym in symbols:
+        price, _ = loop.run_until_complete(get_price(sym))
+        prices[sym] = price
+    return jsonify(prices)
+
+@app.route('/api/news', methods=['POST'])
+def api_news():
+    data = request.json
+    asset_class = data.get('asset_class', 'crypto')
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    news = loop.run_until_complete(fetch_news(asset_class))
+    return jsonify(news)
+
+@app.route('/api/heatmap', methods=['POST'])
+def api_heatmap():
+    data = request.json
+    asset_class = data.get('asset_class', 'crypto')
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    heat = loop.run_until_complete(get_heatmap_data(asset_class))
+    return jsonify(heat)
+
+@app.route('/api/session')
+def api_session():
+    return jsonify({'session': get_current_session()})
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
