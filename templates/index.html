@@ -317,13 +317,15 @@
         </div>
 
         <!-- Signals Container -->
-        <div id="signalsContainer" class="signals-grid"></div>
-
-        <div class="footer-note">
-            * Signals are generated using real-time data and advanced confluence filters. Always manage your own risk.
-        </div>
-    </div>
-
+        
+} catch (error) {
+    signalsContainer.innerHTML = `
+        <div class="error-message">
+            <i class="fas fa-exclamation-triangle"></i> Network error. Please check your connection and try again.
+            <br><br>
+            <button class="btn-primary" onclick="location.reload()" style="padding: 8px 20px; font-size: 0.9rem;">Retry</button>
+        </div>`;
+}
     <script>
         const assetButtons = document.querySelectorAll('[data-asset]');
         const tradeButtons = document.querySelectorAll('[data-trade]');
