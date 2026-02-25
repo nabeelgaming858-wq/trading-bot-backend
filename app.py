@@ -17,6 +17,7 @@ from collections import deque
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 import numpy as np
+from typing import Optional
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("bot")
@@ -90,7 +91,7 @@ def _get(url, params=None, timeout=8):
 # ═════════════════════════════════════════════════════════════════════════════
 #  LIVE PRICE FETCHING
 # ═════════════════════════════════════════════════════════════════════════════
-def get_crypto_price(symbol: str) -> dict | None:
+def get_crypto_price(symbol: str) -> dict:
     cache_key = f"price_{symbol}"
     cached = PRICE_CACHE.get(cache_key)
     if cached and (time.time() - cached["ts"]) < CACHE_TTL_PRICE:
@@ -153,7 +154,7 @@ def get_crypto_price(symbol: str) -> dict | None:
     return None
 
 
-def get_forex_price(symbol: str) -> dict | None:
+def get_forex_price(symbol: str) -> dict:
     cache_key = f"price_{symbol}"
     cached = PRICE_CACHE.get(cache_key)
     if cached and (time.time() - cached["ts"]) < 60:
@@ -189,13 +190,13 @@ def get_forex_price(symbol: str) -> dict | None:
     return None
 
 
-def get_price(symbol: str, category: str) -> dict | None:
+def get_price(symbol: str, category: str) -> dict:
     return get_crypto_price(symbol) if category == "crypto" else get_forex_price(symbol)
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  REAL OHLCV CANDLE DATA
 # ═════════════════════════════════════════════════════════════════════════════
-def get_crypto_candles(symbol: str, interval: str, limit: int = 100) -> list | None:
+def get_crypto_candles(symbol: str, interval: str, limit: int = 100) -> list:
     """Returns list of dicts: {open, high, low, close, volume, ts}"""
     cache_key = f"{symbol}|{interval}"
     cached = CANDLE_CACHE.get(cache_key)
@@ -223,7 +224,7 @@ def get_crypto_candles(symbol: str, interval: str, limit: int = 100) -> list | N
     return None
 
 
-def get_forex_candles(symbol: str, interval: str, limit: int = 100) -> list | None:
+def get_forex_candles(symbol: str, interval: str, limit: int = 100) -> list:
     """Use TwelveData if key available, else return None"""
     if not TWELVEDATA_KEY:
         return None
@@ -255,7 +256,7 @@ def get_forex_candles(symbol: str, interval: str, limit: int = 100) -> list | No
     return None
 
 
-def get_candles(symbol: str, category: str, interval: str, limit: int = 100) -> list | None:
+def get_candles(symbol: str, category: str, interval: str, limit: int = 100) -> list:
     if category == "crypto":
         return get_crypto_candles(symbol, interval, limit)
     else:
@@ -549,7 +550,7 @@ def detect_market_structure(highs: np.ndarray, lows: np.ndarray) -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 #  FULL INDICATOR SUITE — RUNS ON REAL CANDLES
 # ═════════════════════════════════════════════════════════════════════════════
-def run_full_analysis(candles: list, trade_type: str) -> dict | None:
+def run_full_analysis(candles: list, trade_type: str) -> dict:
     """
     Given real OHLCV candles, compute every indicator and produce a
     direction + confidence score with full transparency.
@@ -768,7 +769,7 @@ def get_session_info() -> dict:
 def compute_dynamic_params(price: float, direction: str, atr: float,
                            category: str, timeframe: str, confidence: float,
                            sr: dict, session_mult: float,
-                           trade_type: str, custom_minutes: int | None) -> dict:
+                           trade_type: str, custom_minutes: int) -> dict:
     # ── ATR-based SL with 1.5× buffer (breathing room rule) ──────────────
     atr_mult = 1.5
     if   confidence > 80: atr_mult = 1.3
