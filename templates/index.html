@@ -3,17 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Trade Bot | Professional Trading Signals</title>
-    <!-- Fonts & Icons -->
+    <title>Quantum Trade Bot | Top 3 Signals</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
             background: linear-gradient(135deg, #0f0c1f 0%, #1a1a2f 100%);
@@ -24,7 +18,6 @@
             padding: 20px;
             color: #e0e0e0;
         }
-
         .glass-card {
             background: rgba(20, 20, 40, 0.4);
             backdrop-filter: blur(15px);
@@ -34,9 +27,8 @@
             padding: 30px;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             width: 100%;
-            max-width: 900px;
+            max-width: 1200px;
         }
-
         h1 {
             font-size: 2.5rem;
             font-weight: 600;
@@ -46,14 +38,12 @@
             margin-bottom: 10px;
             text-align: center;
         }
-
         .subtitle {
             text-align: center;
             color: #9ca3af;
             margin-bottom: 30px;
             font-size: 1rem;
         }
-
         .controls {
             display: flex;
             flex-wrap: wrap;
@@ -61,14 +51,12 @@
             justify-content: center;
             margin-bottom: 30px;
         }
-
         .btn-group {
             display: flex;
             background: rgba(255, 255, 255, 0.05);
             border-radius: 50px;
             padding: 5px;
         }
-
         .btn-group .btn {
             background: transparent;
             border: none;
@@ -80,13 +68,31 @@
             transition: all 0.3s;
             font-size: 0.95rem;
         }
-
         .btn-group .btn.active {
             background: linear-gradient(135deg, #6366f1, #a855f7);
             color: white;
             box-shadow: 0 10px 20px -10px #a855f7;
         }
-
+        .custom-duration {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 50px;
+            padding: 5px 10px;
+        }
+        .custom-duration select, .custom-duration input {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 30px;
+            font-size: 0.95rem;
+            outline: none;
+        }
+        .custom-duration select option {
+            background: #1a1a2f;
+        }
         .btn-primary {
             background: linear-gradient(135deg, #6366f1, #a855f7);
             border: none;
@@ -100,170 +106,173 @@
             box-shadow: 0 15px 30px -10px #a855f7;
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
-
         .btn-primary:hover {
             transform: translateY(-2px);
             box-shadow: 0 20px 40px -10px #a855f7;
         }
-
         .btn-primary:disabled {
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
         }
-
+        .signals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
         .signal-card {
             background: rgba(30, 30, 50, 0.5);
             border-radius: 25px;
-            padding: 25px;
-            margin-top: 30px;
+            padding: 20px;
             border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.2s;
         }
-
+        .signal-card:hover {
+            transform: translateY(-5px);
+            border-color: #a855f7;
+        }
         .signal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
+            margin-bottom: 15px;
         }
-
         .asset-badge {
-            font-size: 2rem;
+            font-size: 1.5rem;
             font-weight: 700;
             background: linear-gradient(135deg, #fff, #cbd5e0);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-
         .signal-type {
             padding: 5px 15px;
             border-radius: 30px;
             font-weight: 600;
-            font-size: 1.2rem;
         }
-
         .signal-type.long {
             background: rgba(16, 185, 129, 0.2);
             color: #10b981;
             border: 1px solid #10b981;
         }
-
         .signal-type.short {
             background: rgba(239, 68, 68, 0.2);
             color: #ef4444;
             border: 1px solid #ef4444;
         }
-
-        .details-grid {
+        .details-mini {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 20px;
-            margin-bottom: 25px;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+            font-size: 0.9rem;
         }
-
         .detail-item {
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 15px;
-            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            padding: 8px;
             text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.05);
         }
-
         .detail-label {
+            color: #9ca3af;
+            font-size: 0.75rem;
+        }
+        .detail-value {
+            font-weight: 600;
+        }
+        .rationale {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 0.9rem;
+            border-left: 3px solid #a855f7;
+        }
+        .confidence {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             font-size: 0.85rem;
             color: #9ca3af;
-            margin-bottom: 5px;
         }
-
-        .detail-value {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: white;
+        .loader {
+            display: none;
+            text-align: center;
+            margin: 30px 0;
         }
-
-        .detail-value.small {
-            font-size: 1.2rem;
+        .loader i {
+            font-size: 2rem;
+            color: #a855f7;
+            animation: spin 1s infinite linear;
         }
-
-        .rationale {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 15px;
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .error-message {
+            color: #ef4444;
+            text-align: center;
             padding: 20px;
-            margin: 20px 0;
-            border-left: 4px solid #a855f7;
         }
-
         .footer-note {
             font-size: 0.85rem;
             color: #6b7280;
             text-align: center;
             margin-top: 20px;
         }
-
-        .loader {
-            display: none;
-            text-align: center;
-            margin: 30px 0;
-        }
-
-        .loader i {
-            font-size: 2rem;
-            color: #a855f7;
-            animation: spin 1s infinite linear;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .error-message {
-            color: #ef4444;
-            text-align: center;
-            padding: 20px;
-        }
     </style>
 </head>
 <body>
     <div class="glass-card">
         <h1>QUANTUM TRADE BOT</h1>
-        <div class="subtitle">High-probability signals with dynamic risk management</div>
+        <div class="subtitle">Top 3 high-probability signals with dynamic risk management</div>
 
-        <!-- Control Panel -->
         <div class="controls">
-            <!-- Asset Type Selector -->
+            <!-- Asset Type -->
             <div class="btn-group" id="assetSelector">
                 <button class="btn active" data-asset="crypto">Crypto (25)</button>
                 <button class="btn" data-asset="forex">Forex (15)</button>
             </div>
 
-            <!-- Trade Type Selector -->
+            <!-- Preset Trade Types -->
             <div class="btn-group" id="tradeSelector">
                 <button class="btn" data-trade="scalp">Scalp</button>
                 <button class="btn active" data-trade="intraday">Intraday</button>
                 <button class="btn" data-trade="swing">Swing</button>
+            </div>
+
+            <!-- Custom Duration -->
+            <div class="custom-duration">
+                <select id="customTimeframe">
+                    <option value="">Custom</option>
+                    <option value="1m">1m</option>
+                    <option value="5m">5m</option>
+                    <option value="15m">15m</option>
+                    <option value="30m">30m</option>
+                    <option value="1h">1h</option>
+                    <option value="4h">4h</option>
+                    <option value="1d">1d</option>
+                </select>
+                <button class="btn" id="applyCustom">Apply</button>
             </div>
         </div>
 
         <!-- Generate Button -->
         <div style="text-align: center;">
             <button class="btn-primary" id="generateBtn">
-                <i class="fas fa-chart-line" style="margin-right: 10px;"></i> GENERATE TRADE
+                <i class="fas fa-chart-line" style="margin-right: 10px;"></i> GENERATE TOP 3 TRADES
             </button>
         </div>
 
         <!-- Loader -->
         <div class="loader" id="loader">
             <i class="fas fa-circle-notch"></i>
-            <p style="margin-top: 10px;">Scanning markets for best opportunity...</p>
+            <p style="margin-top: 10px;">Scanning markets for best opportunities...</p>
         </div>
 
-        <!-- Signal Display -->
-        <div id="signalContainer"></div>
+        <!-- Signals Container -->
+        <div id="signalsContainer" class="signals-grid"></div>
 
         <div class="footer-note">
-            * Signals are generated using real-time data and advanced confluence filters. Always manage your own risk.
+            * Signals use real-time crypto data (Binance) and best available forex data.
+            For accurate forex, set a free Twelve Data API key as environment variable.
         </div>
     </div>
 
@@ -272,12 +281,15 @@
         const tradeButtons = document.querySelectorAll('[data-trade]');
         const generateBtn = document.getElementById('generateBtn');
         const loader = document.getElementById('loader');
-        const signalContainer = document.getElementById('signalContainer');
+        const signalsContainer = document.getElementById('signalsContainer');
+        const customTimeframe = document.getElementById('customTimeframe');
+        const applyCustom = document.getElementById('applyCustom');
 
         let currentAsset = 'crypto';
-        let currentTrade = 'intraday';
+        let currentTrade = 'intraday';   // preset
+        let currentCustom = null;         // custom timeframe if set
 
-        // Toggle active classes
+        // Toggle asset
         assetButtons.forEach(btn => {
             btn.addEventListener('click', () => {
                 assetButtons.forEach(b => b.classList.remove('active'));
@@ -286,84 +298,100 @@
             });
         });
 
+        // Toggle preset trade type
         tradeButtons.forEach(btn => {
             btn.addEventListener('click', () => {
                 tradeButtons.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentTrade = btn.dataset.trade;
+                currentCustom = null; // clear custom
+                customTimeframe.value = '';
             });
         });
 
+        // Apply custom timeframe
+        applyCustom.addEventListener('click', () => {
+            const tf = customTimeframe.value;
+            if (tf) {
+                currentCustom = tf;
+                // Deactivate preset buttons
+                tradeButtons.forEach(b => b.classList.remove('active'));
+            } else {
+                alert('Please select a timeframe');
+            }
+        });
+
         generateBtn.addEventListener('click', async () => {
-            // Show loader, hide previous signal
             loader.style.display = 'block';
-            signalContainer.innerHTML = '';
+            signalsContainer.innerHTML = '';
             generateBtn.disabled = true;
+
+            // Determine which timeframe to send
+            let payload = {
+                asset_type: currentAsset,
+                trade_type: currentCustom ? null : currentTrade,
+                custom_timeframe: currentCustom
+            };
 
             try {
                 const response = await fetch('/api/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ asset_type: currentAsset, trade_type: currentTrade })
+                    body: JSON.stringify(payload)
                 });
                 const data = await response.json();
                 if (data.success) {
-                    renderSignal(data.signal);
+                    renderSignals(data.signals);
                 } else {
-                    signalContainer.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-triangle"></i> ${data.message}</div>`;
+                    signalsContainer.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-triangle"></i> ${data.message}</div>`;
                 }
             } catch (error) {
-                signalContainer.innerHTML = `<div class="error-message">Network error. Please try again.</div>`;
+                signalsContainer.innerHTML = `<div class="error-message">Network error. Please try again.</div>`;
             } finally {
                 loader.style.display = 'none';
                 generateBtn.disabled = false;
             }
         });
 
-        function renderSignal(signal) {
-            const signalClass = signal.signal.toLowerCase() === 'long' ? 'long' : 'short';
-            const html = `
-                <div class="signal-card">
-                    <div class="signal-header">
-                        <span class="asset-badge">${signal.asset}</span>
-                        <span class="signal-type ${signalClass}">${signal.signal}</span>
+        function renderSignals(signals) {
+            let html = '';
+            signals.forEach(signal => {
+                const signalClass = signal.signal.toLowerCase() === 'long' ? 'long' : 'short';
+                html += `
+                    <div class="signal-card">
+                        <div class="signal-header">
+                            <span class="asset-badge">${signal.asset}</span>
+                            <span class="signal-type ${signalClass}">${signal.signal}</span>
+                        </div>
+                        <div class="details-mini">
+                            <div class="detail-item">
+                                <div class="detail-label">Entry</div>
+                                <div class="detail-value">${signal.entry}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">SL</div>
+                                <div class="detail-value">${signal.stop_loss}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">TP</div>
+                                <div class="detail-value">${signal.take_profit}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Lev</div>
+                                <div class="detail-value">${signal.leverage}x</div>
+                            </div>
+                        </div>
+                        <div class="rationale">
+                            <strong>Why?</strong> ${signal.rationale}
+                        </div>
+                        <div class="confidence">
+                            <span>⏱ ${signal.timeframe} | ⌛ ${signal.duration}</span>
+                            <span>${signal.confidence} confidence</span>
+                        </div>
                     </div>
-                    <div class="details-grid">
-                        <div class="detail-item">
-                            <div class="detail-label">Entry</div>
-                            <div class="detail-value">${signal.entry}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Stop Loss</div>
-                            <div class="detail-value">${signal.stop_loss}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Take Profit</div>
-                            <div class="detail-value">${signal.take_profit}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Leverage</div>
-                            <div class="detail-value">${signal.leverage}x</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Duration</div>
-                            <div class="detail-value">${signal.duration}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Timeframe</div>
-                            <div class="detail-value">${signal.timeframe}</div>
-                        </div>
-                    </div>
-                    <div class="rationale">
-                        <strong>Why this trade?</strong> ${signal.rationale}
-                    </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: #9ca3af;">Confidence: ${signal.confidence}</span>
-                        <span style="color: #a78bfa;"><i class="fas fa-shield-alt"></i> ATR-adjusted stops</span>
-                    </div>
-                </div>
-            `;
-            signalContainer.innerHTML = html;
+                `;
+            });
+            signalsContainer.innerHTML = html;
         }
     </script>
 </body>
