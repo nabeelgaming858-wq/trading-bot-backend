@@ -1,372 +1,1173 @@
 <!DOCTYPE html>
-<html lang="en" x-data="tradingBot()" x-init="init()" :class="{ 'dark': darkMode }">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>ProTrading Bot | High-Probability Signals</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
-        :root {
-            --bg-light: #f8fafc;
-            --card-light: rgba(255,255,255,0.8);
-            --text-light: #1e293b;
-            --border-light: rgba(0,0,0,0.1);
-            --bg-dark: #0f172a;
-            --card-dark: rgba(15,23,42,0.8);
-            --text-dark: #e2e8f0;
-            --border-dark: rgba(255,255,255,0.1);
-        }
-        body {
-            background: var(--bg-light);
-            color: var(--text-light);
-            transition: background 0.3s, color 0.3s;
-            font-family: 'Inter', sans-serif;
-        }
-        .dark body {
-            background: var(--bg-dark);
-            color: var(--text-dark);
-        }
-        .glass {
-            background: var(--card-light);
-            backdrop-filter: blur(10px);
-            border: 1px solid var(--border-light);
-            border-radius: 20px;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-        }
-        .dark .glass {
-            background: var(--card-dark);
-            border-color: var(--border-dark);
-        }
-        .btn-primary {
-            @apply bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white;
-        }
-        .btn-secondary {
-            @apply bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white;
-        }
-        .price-updated {
-            animation: pulse 0.5s;
-        }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.6; }
-            100% { opacity: 1; }
-        }
-    </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>⚡ Elite Signal Bot — Real Market Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+/* ══════════════ CSS VARIABLES & THEMES ══════════════ */
+:root{
+  --bg0:#060912;--bg1:#0b1120;--bg2:#111827;--bg3:#1a2235;
+  --glass:rgba(255,255,255,0.038);--glass2:rgba(255,255,255,0.06);
+  --gb:rgba(255,255,255,0.07);--gb2:rgba(255,255,255,0.12);
+  --accent:#00d4ff;--accentd:#0099bb;--accent2:#7c3aed;--accent2d:#5b21b6;
+  --accent3:#f59e0b;--accent3d:#d97706;
+  --green:#10b981;--green2:#059669;--red:#ef4444;--red2:#dc2626;
+  --yellow:#f59e0b;--purple:#8b5cf6;--pink:#ec4899;
+  --text0:#f8fafc;--text1:#e2e8f0;--text2:#94a3b8;--text3:#475569;--text4:#1e293b;
+  --border:#1e293b;--border2:#263448;
+  --shadow:0 8px 40px rgba(0,0,0,.6);--shadow2:0 4px 20px rgba(0,212,255,.15);
+  --r:16px;--r2:12px;--r3:8px;
+  --mono:'JetBrains Mono',monospace;
+}
+body.light{
+  --bg0:#e8f0fe;--bg1:#f0f4ff;--bg2:#ffffff;--bg3:#f8fafc;
+  --glass:rgba(255,255,255,.75);--glass2:rgba(255,255,255,.85);
+  --gb:rgba(0,0,0,.06);--gb2:rgba(0,0,0,.1);
+  --text0:#0f172a;--text1:#1e293b;--text2:#475569;--text3:#94a3b8;
+  --border:#dde3f0;--border2:#c8d3e8;
+  --shadow:0 8px 40px rgba(0,0,0,.12);--shadow2:0 4px 20px rgba(0,212,255,.1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--bg0);color:var(--text0);
+  min-height:100vh;overflow-x:hidden;
+  transition:background .35s,color .35s;
+}
+
+/* ── ANIMATED BACKGROUND ── */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse 90% 60% at 10% -10%,rgba(0,212,255,.06) 0%,transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 110%,rgba(124,58,237,.05) 0%,transparent 55%),
+    radial-gradient(ellipse 50% 40% at 50% 50%,rgba(16,185,129,.02) 0%,transparent 60%);
+}
+body.light::before{opacity:.4}
+
+/* ── GRID LINES ── */
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(0,212,255,.015) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,.015) 1px,transparent 1px);
+  background-size:60px 60px;
+}
+body.light::after{opacity:.3}
+
+/* ═════════════════════ LAYOUT ═════════════════════ */
+#app{position:relative;z-index:1;max-width:1640px;margin:0 auto;padding:16px 20px}
+
+.glass{
+  background:var(--glass);
+  backdrop-filter:blur(24px) saturate(200%);
+  -webkit-backdrop-filter:blur(24px) saturate(200%);
+  border:1px solid var(--gb);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+}
+.glass2{
+  background:var(--glass2);
+  backdrop-filter:blur(16px) saturate(180%);
+  -webkit-backdrop-filter:blur(16px) saturate(180%);
+  border:1px solid var(--gb2);
+  border-radius:var(--r2);
+}
+
+/* ═════════════════════ HEADER ═════════════════════ */
+.header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 24px;margin-bottom:16px;
+}
+.logo{display:flex;align-items:center;gap:14px}
+.logo-glow{
+  width:46px;height:46px;border-radius:14px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;font-size:22px;
+  box-shadow:0 0 20px rgba(0,212,255,.4),0 0 40px rgba(0,212,255,.15);
+  animation:pulse-glow 3s ease-in-out infinite;
+}
+@keyframes pulse-glow{
+  0%,100%{box-shadow:0 0 20px rgba(0,212,255,.4),0 0 40px rgba(0,212,255,.15)}
+  50%{box-shadow:0 0 30px rgba(0,212,255,.6),0 0 60px rgba(0,212,255,.25)}
+}
+.logo-text h1{
+  font-size:20px;font-weight:900;letter-spacing:-.3px;
+  background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 60%,var(--pink) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.logo-text p{font-size:11px;color:var(--text3);margin-top:1px;letter-spacing:.3px}
+.header-right{display:flex;align-items:center;gap:10px}
+.sess-badge{
+  padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;
+  letter-spacing:.5px;text-transform:uppercase;cursor:default;
+}
+.icon-btn{
+  width:36px;height:36px;border-radius:10px;
+  background:var(--glass2);border:1px solid var(--gb);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:16px;color:var(--text2);transition:all .2s;
+}
+.icon-btn:hover{background:var(--gb2);color:var(--text0);transform:scale(1.05)}
+
+/* ═════════════════════ TICKER ═════════════════════ */
+.ticker-wrap{
+  padding:10px 0;margin-bottom:14px;overflow:hidden;
+  position:relative;
+}
+.ticker-wrap::before,.ticker-wrap::after{
+  content:'';position:absolute;top:0;bottom:0;width:60px;z-index:2;
+}
+.ticker-wrap::before{left:0;background:linear-gradient(90deg,var(--bg0),transparent)}
+.ticker-wrap::after{right:0;background:linear-gradient(-90deg,var(--bg0),transparent)}
+body.light .ticker-wrap::before{background:linear-gradient(90deg,var(--bg0),transparent)}
+body.light .ticker-wrap::after{background:linear-gradient(-90deg,var(--bg0),transparent)}
+.ticker-inner{
+  display:flex;gap:28px;white-space:nowrap;
+  animation:tick 40s linear infinite;
+}
+.ticker-inner:hover{animation-play-state:paused}
+@keyframes tick{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.t-item{display:flex;align-items:center;gap:7px;font-size:12.5px}
+.t-sym{color:var(--text2);font-weight:600}
+.t-price{font-weight:700;font-family:var(--mono);font-size:12px}
+.t-chg{font-size:11.5px;font-weight:700;padding:2px 6px;border-radius:5px}
+.t-chg.up{background:rgba(16,185,129,.12);color:var(--green)}
+.t-chg.dn{background:rgba(239,68,68,.12);color:var(--red)}
+
+/* ═════════════════════ MAIN GRID ═════════════════════ */
+.main-grid{display:grid;grid-template-columns:340px 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:1024px){.main-grid{grid-template-columns:1fr}}
+
+/* ═════════════════════ CONTROL PANEL ═════════════════════ */
+.cpanel{padding:22px;display:flex;flex-direction:column;gap:18px}
+.sect-label{
+  font-size:10px;font-weight:800;letter-spacing:2px;
+  text-transform:uppercase;color:var(--text3);margin-bottom:9px;
+}
+.tab-row{display:grid;gap:7px}
+.tab-row.two{grid-template-columns:1fr 1fr}
+.tab-row.three{grid-template-columns:1fr 1fr 1fr}
+.tab-row.four{grid-template-columns:1fr 1fr 1fr 1fr}
+
+.tab-btn{
+  padding:9px 6px;border-radius:var(--r3);
+  border:1px solid var(--gb);background:var(--glass);
+  cursor:pointer;text-align:center;
+  font-size:12px;font-weight:600;color:var(--text2);
+  transition:all .2s;
+}
+.tab-btn:hover{background:var(--glass2);color:var(--text0)}
+.tab-btn.a-cat{
+  background:linear-gradient(135deg,rgba(0,212,255,.15),rgba(124,58,237,.12));
+  border-color:rgba(0,212,255,.35);color:var(--accent);
+}
+.tab-btn.a-type{
+  background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.35);color:var(--accent3);
+}
+.tab-btn.a-dur{
+  background:rgba(124,58,237,.1);border-color:rgba(124,58,237,.35);color:var(--purple);
+}
+
+.custom-input-row{display:flex;align-items:center;gap:8px;margin-top:6px}
+.custom-input-row input{
+  flex:1;padding:8px 11px;border-radius:var(--r3);
+  border:1px solid var(--gb);background:var(--glass);
+  color:var(--text0);font-size:13px;font-family:var(--mono);outline:none;
+  transition:border-color .2s;
+}
+.custom-input-row input:focus{border-color:var(--accent)}
+.custom-input-row input::placeholder{color:var(--text3)}
+.custom-input-row span{font-size:11px;color:var(--text3)}
+
+/* Stats mini row */
+.stats-strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.stat-cell{
+  padding:10px 6px;border-radius:var(--r3);text-align:center;
+  background:var(--glass);border:1px solid var(--gb);
+}
+.stat-cell .v{font-size:18px;font-weight:800;color:var(--accent);font-family:var(--mono)}
+.stat-cell .l{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:3px}
+
+/* GEN BUTTON */
+.gen-btn{
+  padding:15px;border-radius:var(--r2);border:none;cursor:pointer;
+  font-size:15px;font-weight:800;letter-spacing:.3px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:white;position:relative;overflow:hidden;
+  box-shadow:0 4px 24px rgba(0,212,255,.3);
+  transition:transform .2s,box-shadow .2s;
+}
+.gen-btn:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,212,255,.45)}
+.gen-btn:active{transform:translateY(0)}
+.gen-btn.loading{pointer-events:none}
+.gen-btn.loading::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.25),transparent);
+  animation:shim 1s infinite;
+}
+@keyframes shim{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+/* scan progress */
+.scan-bar{
+  height:3px;border-radius:2px;background:var(--gb);overflow:hidden;margin-top:8px;
+}
+.scan-fill{
+  height:100%;border-radius:2px;width:0%;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));
+  transition:width .3s;
+}
+
+/* ═════════════════════ SIGNAL CARD ═════════════════════ */
+.signal-wrap{min-height:500px}
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:500px;gap:14px;color:var(--text3);text-align:center;padding:40px;
+}
+.empty-icon{font-size:56px;opacity:.3;animation:float 4s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+.sig-card{padding:26px;animation:fadeup .4s ease}
+@keyframes fadeup{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+/* Signal header */
+.sig-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;gap:12px;flex-wrap:wrap}
+.sig-left{display:flex;align-items:center;gap:14px}
+.sig-avatar{
+  width:52px;height:52px;border-radius:15px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:900;color:white;
+  box-shadow:0 4px 16px rgba(0,212,255,.3);
+  flex-shrink:0;
+}
+.sig-title{font-size:26px;font-weight:900;letter-spacing:-.5px}
+.sig-sub{font-size:11.5px;color:var(--text3);margin-top:3px;font-family:var(--mono)}
+.sig-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dir-badge{
+  padding:9px 22px;border-radius:50px;font-size:15px;font-weight:800;
+  letter-spacing:1px;
+}
+.dir-badge.LONG{
+  background:rgba(16,185,129,.12);border:2px solid var(--green);color:var(--green);
+  box-shadow:0 0 16px rgba(16,185,129,.2);
+}
+.dir-badge.SHORT{
+  background:rgba(239,68,68,.12);border:2px solid var(--red);color:var(--red);
+  box-shadow:0 0 16px rgba(239,68,68,.2);
+}
+.conf-pill{
+  padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;
+  background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.3);color:var(--accent);
+}
+
+/* Metrics grid */
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+@media(max-width:700px){.metrics{grid-template-columns:repeat(2,1fr)}}
+.metric{
+  padding:14px;border-radius:var(--r2);
+  background:rgba(255,255,255,.025);border:1px solid var(--gb);
+  transition:border-color .2s;
+}
+.metric:hover{border-color:var(--gb2)}
+.metric .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);margin-bottom:7px}
+.metric .val{font-size:20px;font-weight:800;font-family:var(--mono);letter-spacing:-.5px}
+.metric .sub{font-size:10.5px;color:var(--text3);margin-top:4px}
+.m-entry .val{color:var(--accent)}
+.m-tp    .val{color:var(--green)}
+.m-sl    .val{color:var(--red)}
+.m-lev   .val{color:var(--accent3)}
+.m-dur   .val{color:var(--purple)}
+.m-rr    .val{color:var(--yellow)}
+
+/* Price range bar */
+.range-bar{margin:16px 0 8px}
+.range-track{
+  height:9px;border-radius:5px;position:relative;overflow:visible;
+  background:linear-gradient(90deg,rgba(239,68,68,.3),rgba(245,158,11,.3),rgba(16,185,129,.3));
+}
+.range-dot{
+  position:absolute;top:50%;transform:translate(-50%,-50%);
+  width:16px;height:16px;border-radius:50%;background:white;
+  border:3px solid var(--accent);box-shadow:0 0 12px rgba(0,212,255,.5);
+  z-index:2;transition:left .5s ease;
+}
+.range-labels{
+  display:flex;justify-content:space-between;font-size:11px;
+  font-family:var(--mono);font-weight:600;margin-top:6px;
+}
+
+/* Confidence bar */
+.conf-wrap{margin-bottom:16px}
+.conf-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.conf-head span{font-size:11px;color:var(--text3)}
+.conf-head strong{font-size:12px;font-family:var(--mono)}
+.conf-track{height:7px;border-radius:4px;background:var(--gb);overflow:hidden}
+.conf-fill{height:100%;border-radius:4px;transition:width 1s ease;
+  background:linear-gradient(90deg,var(--accent2),var(--accent))}
+.score-row{display:flex;gap:8px;margin-top:6px}
+.score-pill{
+  flex:1;padding:5px 8px;border-radius:6px;text-align:center;
+  font-size:11px;font-weight:700;font-family:var(--mono);
+}
+.score-pill.bull{background:rgba(16,185,129,.1);color:var(--green)}
+.score-pill.bear{background:rgba(239,68,68,.1);color:var(--red)}
+
+/* Confirmations */
+.confirms{
+  display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;
+}
+.confirm-tag{
+  padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;
+  border:1px solid;
+}
+.confirm-tag.bull{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.25);color:var(--green)}
+.confirm-tag.bear{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.25);color:var(--red)}
+.confirm-tag.neutral{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.25);color:var(--yellow)}
+
+/* Indicator grid */
+.ind-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;
+}
+@media(max-width:700px){.ind-grid{grid-template-columns:repeat(2,1fr)}}
+.ind-cell{
+  padding:10px;border-radius:var(--r3);
+  background:rgba(255,255,255,.02);border:1px solid var(--gb);
+}
+.ind-cell .il{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:4px}
+.ind-cell .iv{font-size:14px;font-weight:700;font-family:var(--mono)}
+.ind-cell .iv.bull{color:var(--green)}
+.ind-cell .iv.bear{color:var(--red)}
+.ind-cell .iv.neutral{color:var(--yellow)}
+
+/* Reason box */
+.reason-box{
+  padding:16px;border-radius:var(--r2);margin-bottom:14px;
+  background:rgba(0,212,255,.03);border:1px solid rgba(0,212,255,.08);
+  font-size:12.5px;line-height:1.75;color:var(--text2);white-space:pre-line;
+  font-family:var(--mono);max-height:320px;overflow-y:auto;
+}
+.reason-box strong{color:var(--text0)}
+
+/* Trade timer row */
+.timer-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-radius:var(--r3);
+  background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.18);
+  margin-bottom:10px;
+}
+.timer-label{font-size:12px;color:var(--yellow);font-weight:600}
+.timer-val{font-size:13px;font-family:var(--mono);font-weight:700;color:var(--yellow)}
+.close-trade-btn{
+  padding:5px 13px;border-radius:6px;border:1px solid var(--red);
+  background:rgba(239,68,68,.08);color:var(--red);
+  cursor:pointer;font-size:11px;font-weight:700;transition:all .2s;
+}
+.close-trade-btn:hover{background:rgba(239,68,68,.18)}
+
+/* Meta chips row */
+.meta-chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{
+  padding:6px 12px;border-radius:7px;font-size:11px;font-weight:600;
+  background:var(--glass);border:1px solid var(--gb);text-align:center;
+}
+.chip .cl{color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.8px;margin-bottom:2px}
+.chip .cv{font-weight:700;font-family:var(--mono);font-size:12px}
+
+/* ═════════════════════ BOTTOM PANEL ═════════════════════ */
+.bottom-panel{padding:20px}
+.btabs{display:flex;gap:4px;margin-bottom:16px;
+  padding:4px;background:rgba(255,255,255,.03);border-radius:var(--r3);border:1px solid var(--gb);
+  width:fit-content;
+}
+.btab{
+  padding:7px 18px;border-radius:7px;border:none;background:transparent;
+  font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;transition:all .2s;
+}
+.btab.on{background:var(--bg2);color:var(--text0)}
+
+/* Heatmap */
+.hmap{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
+.hm-cell{
+  padding:13px 8px;border-radius:var(--r3);text-align:center;cursor:pointer;
+  transition:transform .15s,filter .15s;
+}
+.hm-cell:hover{transform:scale(1.05);filter:brightness(1.15)}
+.hm-s{font-size:11px;font-weight:800;color:white;margin-bottom:3px}
+.hm-p{font-size:10px;color:rgba(255,255,255,.75);font-family:var(--mono)}
+.hm-c{font-size:15px;font-weight:900;color:white;margin-top:2px}
+
+/* History table */
+.htable-wrap{overflow-x:auto}
+table.htable{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+table.htable th{
+  padding:9px 12px;color:var(--text3);font-size:10px;font-weight:700;
+  letter-spacing:1px;text-transform:uppercase;text-align:left;
+  border-bottom:1px solid var(--border);
+}
+table.htable td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.03)}
+table.htable tr:hover td{background:rgba(255,255,255,.018)}
+.hdir,.hstatus{padding:3px 9px;border-radius:4px;font-size:11px;font-weight:700}
+.hdir.LONG{background:rgba(16,185,129,.12);color:var(--green)}
+.hdir.SHORT{background:rgba(239,68,68,.12);color:var(--red)}
+.hstatus.ACTIVE{background:rgba(0,212,255,.1);color:var(--accent)}
+.hstatus.CLOSED{background:rgba(100,116,139,.1);color:var(--text3)}
+
+/* ═════════════════════ NOTIFICATION PANEL ═════════════════════ */
+.npanel{
+  position:fixed;top:68px;right:18px;width:320px;z-index:900;
+  padding:18px;display:none;max-height:80vh;overflow-y:auto;
+}
+.npanel.open{display:block}
+.npref-row{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 0;font-size:13px;border-bottom:1px solid var(--gb)}
+.npref-row:last-child{border-bottom:none}
+.toggle{position:relative;width:38px;height:20px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.tslider{
+  position:absolute;inset:0;background:var(--border2);
+  border-radius:10px;cursor:pointer;transition:.3s;
+}
+.tslider::before{
+  content:'';position:absolute;
+  height:14px;width:14px;left:3px;bottom:3px;
+  background:white;border-radius:50%;transition:.3s;
+}
+.toggle input:checked + .tslider{background:var(--accent)}
+.toggle input:checked + .tslider::before{transform:translateX(18px)}
+.nlog{margin-top:12px}
+.nlog-item{
+  padding:9px;border-radius:8px;background:var(--glass);border:1px solid var(--gb);
+  margin-bottom:6px;font-size:11px;line-height:1.5;
+}
+
+/* ═════════════════════ TOAST ═════════════════════ */
+#toasts{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{
+  padding:12px 16px;border-radius:var(--r3);
+  background:var(--bg2);border:1px solid var(--gb);box-shadow:var(--shadow);
+  display:flex;align-items:center;gap:10px;max-width:360px;
+  font-size:13px;animation:tin .3s ease;
+}
+.toast.s{border-left:3px solid var(--green)}
+.toast.e{border-left:3px solid var(--red)}
+.toast.i{border-left:3px solid var(--accent)}
+@keyframes tin{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+
+/* ═════════════════════ LOADER ═════════════════════ */
+.spin{
+  width:36px;height:36px;border-radius:50%;
+  border:3px solid rgba(0,212,255,.15);border-top-color:var(--accent);
+  animation:sp 1s linear infinite;
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+.loading-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:500px;gap:14px;color:var(--text3);
+}
+
+/* ═════════════════════ SCROLL ═════════════════════ */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--gb2);border-radius:3px}
+
+/* ═════════════════════ RESPONSIVE ═════════════════════ */
+@media(max-width:768px){
+  .header{flex-wrap:wrap;gap:10px}
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .ind-grid{grid-template-columns:repeat(2,1fr)}
+  .hmap{grid-template-columns:repeat(3,1fr)}
+}
+</style>
 </head>
-<body class="p-4 md:p-6">
-    <div class="container mx-auto max-w-7xl" x-data="tradingBot()" x-init="init()">
-        <!-- Header -->
-        <div class="glass p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center space-x-3">
-                <i class="fas fa-chart-line text-3xl text-blue-500"></i>
-                <h1 class="text-2xl md:text-3xl font-bold text-blue-600 dark:text-blue-400">ProTrading Bot</h1>
-            </div>
-            <div class="flex items-center space-x-4">
-                <div class="text-sm md:text-base">
-                    <span class="opacity-70">Session:</span>
-                    <span class="font-semibold ml-1 capitalize" x-text="session"></span>
-                </div>
-                <button @click="toggleTheme" class="w-10 h-10 rounded-full glass flex items-center justify-center text-xl">
-                    <i class="fas" :class="darkMode ? 'fa-sun' : 'fa-moon'"></i>
-                </button>
-            </div>
-        </div>
+<body>
+<div id="app">
 
-        <!-- Asset Selector -->
-        <div class="glass p-4 mb-6 flex justify-center space-x-4">
-            <button @click="assetClass = 'crypto'; fetchPrices(); fetchNews();" class="btn" :class="assetClass === 'crypto' ? 'btn-primary' : 'btn-secondary'">
-                <i class="fab fa-bitcoin mr-2"></i>Crypto (25)
-            </button>
-            <button @click="assetClass = 'forex'; fetchPrices(); fetchNews();" class="btn" :class="assetClass === 'forex' ? 'btn-primary' : 'btn-secondary'">
-                <i class="fas fa-dollar-sign mr-2"></i>Forex (15)
-            </button>
-        </div>
+<!-- ══════ HEADER ══════ -->
+<div class="glass header">
+  <div class="logo">
+    <div class="logo-glow">⚡</div>
+    <div class="logo-text">
+      <h1>ELITE SIGNAL BOT</h1>
+      <p>Real-Time Market Analysis · Live Indicators · ATR Risk Engine</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="sess-badge" id="sess-badge">⏳ Session</div>
+    <button class="icon-btn" onclick="toggleNP()" title="Notifications">🔔</button>
+    <button class="icon-btn" id="theme-btn" onclick="toggleTheme()" title="Theme">🌙</button>
+  </div>
+</div>
 
-        <!-- Main Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Left: Trade Generator -->
-            <div class="lg:col-span-2 glass p-6">
-                <h2 class="text-xl mb-4 flex items-center"><i class="fas fa-magic mr-2 text-blue-500"></i>Trade Generator</h2>
+<!-- ══════ NOTIFICATION PANEL ══════ -->
+<div class="glass npanel" id="npanel">
+  <div class="sect-label">🔔 Alert Preferences</div>
+  <div class="npref-row"><span>In-App Alerts</span><label class="toggle"><input type="checkbox" id="p-inapp" checked><span class="tslider"></span></label></div>
+  <div class="npref-row"><span>Sound Alerts</span><label class="toggle"><input type="checkbox" id="p-sound"><span class="tslider"></span></label></div>
+  <div class="npref-row"><span>Crypto Signals</span><label class="toggle"><input type="checkbox" id="p-crypto" checked><span class="tslider"></span></label></div>
+  <div class="npref-row"><span>Forex Signals</span><label class="toggle"><input type="checkbox" id="p-forex" checked><span class="tslider"></span></label></div>
+  <div class="npref-row"><span>High Confidence Only (≥75%)</span><label class="toggle"><input type="checkbox" id="p-hq"><span class="tslider"></span></label></div>
+  <div class="nlog" id="nlog"></div>
+</div>
 
-                <!-- Trade Type Buttons -->
-                <div class="flex flex-wrap gap-2 mb-4">
-                    <button @click="setDuration('scalp')" class="btn" :class="tradeType === 'scalp' ? 'btn-primary' : 'btn-secondary'">
-                        <i class="fas fa-bolt mr-1"></i>Scalp (15m)
-                    </button>
-                    <button @click="setDuration('intraday')" class="btn" :class="tradeType === 'intraday' ? 'btn-primary' : 'btn-secondary'">
-                        <i class="fas fa-clock mr-1"></i>Intraday (4h)
-                    </button>
-                    <button @click="tradeType = 'custom'" class="btn" :class="tradeType === 'custom' ? 'btn-primary' : 'btn-secondary'">
-                        <i class="fas fa-sliders-h mr-1"></i>Custom
-                    </button>
-                </div>
+<!-- ══════ TICKER ══════ -->
+<div class="glass ticker-wrap">
+  <div class="ticker-inner" id="ticker"><span class="t-item"><span class="t-sym">Loading live prices...</span></span></div>
+</div>
 
-                <!-- Custom Duration -->
-                <div x-show="tradeType === 'custom'" class="mb-4 flex flex-wrap items-center gap-2">
-                    <input type="number" x-model="customDuration" min="1" class="w-24 px-3 py-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-600">
-                    <select x-model="customUnit" class="px-3 py-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-600">
-                        <option value="minutes">Minutes</option>
-                        <option value="hours">Hours</option>
-                        <option value="days">Days</option>
-                    </select>
-                    <span class="text-sm opacity-80">Total: <span x-text="totalMinutes"></span> min</span>
-                </div>
+<!-- ══════ MAIN GRID ══════ -->
+<div class="main-grid">
 
-                <!-- Generate Button -->
-                <button @click="generateTrade" :disabled="loading" class="w-full btn-primary py-3 mb-6 flex items-center justify-center text-lg">
-                    <i class="fas fa-sync-alt mr-2" :class="{ 'animate-spin': loading }"></i>
-                    <span x-text="loading ? 'Scanning Markets...' : 'Generate Trade'"></span>
-                </button>
+  <!-- LEFT: CONTROLS -->
+  <div class="glass cpanel">
 
-                <!-- Top 3 Trades -->
-                <div x-show="signals.length > 0" class="space-y-4">
-                    <template x-for="(signal, index) in signals" :key="index">
-                        <div class="glass-dark p-4 rounded-xl border-l-4" :class="signal.direction === 'LONG' ? 'border-green-500' : 'border-red-500'">
-                            <div class="flex justify-between items-start">
-                                <div>
-                                    <span class="text-xl font-bold" x-text="signal.asset"></span>
-                                    <span class="ml-2 px-2 py-1 text-xs rounded" :class="signal.direction === 'LONG' ? 'bg-green-500' : 'bg-red-500'" x-text="signal.direction"></span>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-xs opacity-70">Confidence</div>
-                                    <div class="text-lg font-bold" x-text="signal.confidence + '%'"></div>
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-sm">
-                                <div><span class="opacity-70">Entry:</span> <span class="font-mono" x-text="signal.entry"></span></div>
-                                <div><span class="opacity-70">SL:</span> <span class="font-mono text-red-400" x-text="signal.stop_loss"></span></div>
-                                <div><span class="opacity-70">TP:</span> <span class="font-mono text-green-400" x-text="signal.take_profit"></span></div>
-                                <div><span class="opacity-70">Leverage:</span> <span class="font-mono" x-text="signal.leverage + 'x'"></span></div>
-                            </div>
-                            <p class="text-xs mt-2 opacity-80" x-text="signal.reason"></p>
-                        </div>
-                    </template>
-                </div>
-
-                <!-- No trades placeholder -->
-                <div x-show="!signals.length && !loading" class="text-center py-12 opacity-50">
-                    <i class="fas fa-chart-bar text-4xl mb-3"></i>
-                    <p>Click "Generate Trade" to scan markets</p>
-                </div>
-            </div>
-
-            <!-- Right Panel -->
-            <div class="space-y-6">
-                <!-- Market Dashboard -->
-                <div class="glass p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl flex items-center"><i class="fas fa-chart-pie mr-2 text-blue-500"></i>Market Dashboard</h2>
-                        <button @click="showHeatmap = true; fetchHeatmap()" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-                            <i class="fas fa-fire"></i> Heat Map
-                        </button>
-                    </div>
-                    <div class="mb-4 glass-dark p-3 rounded">
-                        <div class="flex justify-between">
-                            <span>Current Session:</span>
-                            <span class="font-bold capitalize" x-text="session"></span>
-                        </div>
-                    </div>
-
-                    <!-- Live Prices -->
-                    <h3 class="font-semibold mb-2">Live Prices <span class="text-xs opacity-50">(updating)</span></h3>
-                    <div class="space-y-2 max-h-64 overflow-y-auto pr-2">
-                        <template x-for="(price, sym) in livePrices" :key="sym">
-                            <div class="flex justify-between items-center glass-dark p-2 rounded text-sm">
-                                <span x-text="sym"></span>
-                                <span class="font-mono" :class="priceClass(sym, price)" x-text="formatPrice(price)"></span>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-
-                <!-- News -->
-                <div class="glass p-6">
-                    <h2 class="text-xl mb-4 flex items-center"><i class="fas fa-newspaper mr-2 text-green-500"></i>Market News</h2>
-                    <div class="space-y-3 max-h-64 overflow-y-auto">
-                        <template x-for="article in news.articles" :key="article.title">
-                            <div class="glass-dark p-3 rounded">
-                                <div class="font-semibold text-sm" x-text="article.title"></div>
-                                <div class="text-xs opacity-70 mt-1" x-text="article.description"></div>
-                            </div>
-                        </template>
-                        <div x-show="!news.articles.length" class="text-center opacity-50 py-4">Loading news...</div>
-                    </div>
-                </div>
-
-                <!-- Trade History -->
-                <div class="glass p-6">
-                    <h2 class="text-xl mb-4 flex items-center"><i class="fas fa-history mr-2 text-purple-500"></i>Trade History</h2>
-                    <div class="space-y-2 max-h-40 overflow-y-auto">
-                        <template x-for="(trade, idx) in tradeHistory" :key="idx">
-                            <div class="glass-dark p-2 rounded text-xs flex justify-between">
-                                <span x-text="trade.asset + ' ' + trade.direction"></span>
-                                <span class="font-mono" x-text="trade.entry"></span>
-                            </div>
-                        </template>
-                        <div x-show="!tradeHistory.length" class="text-center opacity-50 py-2">No trades yet</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Heat Map Modal -->
-        <div x-show="showHeatmap" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" @click.away="showHeatmap = false">
-            <div class="glass p-6 max-w-4xl w-full max-h-[80vh] overflow-auto">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl"><i class="fas fa-fire mr-2"></i>Market Heat Map - <span class="capitalize" x-text="assetClass"></span></h3>
-                    <button @click="showHeatmap = false" class="text-2xl">&times;</button>
-                </div>
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                    <template x-for="item in heatmapData" :key="item.symbol">
-                        <div class="glass-dark p-2 rounded text-center" :style="{ backgroundColor: item.change > 0 ? 'rgba(0,200,0,0.2)' : 'rgba(200,0,0,0.2)' }">
-                            <div class="font-bold text-sm" x-text="item.symbol"></div>
-                            <div class="text-xs" x-text="formatPrice(item.price)"></div>
-                            <div class="text-xs" :class="item.change > 0 ? 'text-green-600' : 'text-red-600'" x-text="item.change + '%'"></div>
-                        </div>
-                    </template>
-                </div>
-            </div>
-        </div>
+    <div>
+      <div class="sect-label">📊 Market</div>
+      <div class="tab-row two">
+        <button class="tab-btn a-cat" data-cat="crypto" onclick="setCat('crypto',this)">₿ Crypto</button>
+        <button class="tab-btn" data-cat="forex" onclick="setCat('forex',this)">💱 Forex</button>
+      </div>
     </div>
 
-    <script>
-        function tradingBot() {
-            return {
-                darkMode: localStorage.getItem('theme') === 'dark',
-                assetClass: 'crypto',
-                tradeType: 'scalp',
-                customDuration: 1,
-                customUnit: 'hours',
-                loading: false,
-                signals: [],
-                livePrices: {},
-                previousPrices: {},
-                session: 'asia',
-                news: { articles: [] },
-                tradeHistory: JSON.parse(localStorage.getItem('tradeHistory') || '[]'),
-                showHeatmap: false,
-                heatmapData: [],
+    <div>
+      <div class="sect-label">⚡ Trade Style</div>
+      <div class="tab-row three">
+        <button class="tab-btn" data-type="scalp" onclick="setType('scalp',this)">⚡ Scalp</button>
+        <button class="tab-btn a-type" data-type="intraday" onclick="setType('intraday',this)">📈 Intraday</button>
+        <button class="tab-btn" data-type="swing" onclick="setType('swing',this)">🌊 Swing</button>
+      </div>
+    </div>
 
-                get totalMinutes() {
-                    let mins = this.customDuration;
-                    if (this.customUnit === 'hours') mins *= 60;
-                    if (this.customUnit === 'days') mins *= 1440;
-                    return mins;
-                },
+    <div>
+      <div class="sect-label">⏱ Duration</div>
+      <div class="tab-row four">
+        <button class="tab-btn a-dur" data-dur="" onclick="setDur('',this)">Auto</button>
+        <button class="tab-btn" data-dur="15" onclick="setDur('15',this)">15m</button>
+        <button class="tab-btn" data-dur="60" onclick="setDur('60',this)">1h</button>
+        <button class="tab-btn" data-dur="240" onclick="setDur('240',this)">4h</button>
+      </div>
+      <div class="custom-input-row">
+        <input type="number" id="cdur" placeholder="Custom (any minutes)..." min="1" oninput="setCustomDur(this.value)"/>
+        <span>min</span>
+      </div>
+    </div>
 
-                init() {
-                    this.fetchSession();
-                    this.fetchPrices();
-                    this.fetchNews();
-                    setInterval(() => this.fetchPrices(), 10000);
-                    setInterval(() => this.fetchSession(), 60000);
-                    setInterval(() => this.fetchNews(), 120000);
-                    if (this.darkMode) document.documentElement.classList.add('dark');
-                },
+    <div class="stats-strip">
+      <div class="stat-cell"><div class="v" id="s-signals">0</div><div class="l">Signals</div></div>
+      <div class="stat-cell"><div class="v" id="s-avg">–</div><div class="l">Avg Conf</div></div>
+      <div class="stat-cell"><div class="v" id="s-sess">–</div><div class="l">Session</div></div>
+    </div>
 
-                toggleTheme() {
-                    this.darkMode = !this.darkMode;
-                    localStorage.setItem('theme', this.darkMode ? 'dark' : 'light');
-                    document.documentElement.classList.toggle('dark');
-                },
+    <div>
+      <button class="gen-btn" id="gen-btn" onclick="generate()">
+        ⚡ Generate Trade Signal
+      </button>
+      <div class="scan-bar"><div class="scan-fill" id="scan-fill"></div></div>
+      <div style="font-size:10.5px;color:var(--text3);text-align:center;margin-top:5px" id="scan-status">
+        Ready to scan market
+      </div>
+    </div>
 
-                setDuration(type) {
-                    this.tradeType = type;
-                },
+    <!-- Real-time info -->
+    <div style="padding:10px;border-radius:var(--r3);background:rgba(0,212,255,.04);border:1px solid rgba(0,212,255,.08)">
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">📡 Data Sources</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.8">
+        • <span style="color:var(--green)">Binance</span> – Real OHLCV candles<br>
+        • <span style="color:var(--green)">CoinGecko</span> – Fallback prices<br>
+        • <span style="color:var(--green)">ER-API</span> – Forex live rates<br>
+        • All indicators <span style="color:var(--accent)">calculated from real candles</span>
+      </div>
+    </div>
 
-                async fetchSession() {
-                    const res = await fetch('/api/session');
-                    const data = await res.json();
-                    this.session = data.session;
-                },
+  </div>
 
-                async fetchPrices() {
-                    try {
-                        const res = await fetch('/api/prices', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ asset_class: this.assetClass })
-                        });
-                        const data = await res.json();
-                        this.previousPrices = { ...this.livePrices };
-                        this.livePrices = data;
-                    } catch (e) { console.error(e); }
-                },
+  <!-- RIGHT: SIGNAL DISPLAY -->
+  <div class="glass signal-wrap" id="signal-wrap">
+    <div class="empty-state">
+      <div class="empty-icon">📡</div>
+      <div style="font-size:18px;font-weight:700;color:var(--text2)">Awaiting Market Scan</div>
+      <div style="font-size:13px;max-width:360px;line-height:1.6">
+        Click <strong style="color:var(--accent)">Generate Trade Signal</strong> to scan all assets using real OHLCV candles and calculate live indicators.
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">
+        RSI · MACD · Bollinger · EMA Stack · ATR · Stochastic · VWAP · Fibonacci · Volume · Divergence
+      </div>
+    </div>
+  </div>
 
-                async fetchNews() {
-                    try {
-                        const res = await fetch('/api/news', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ asset_class: this.assetClass })
-                        });
-                        this.news = await res.json();
-                    } catch (e) { console.error(e); }
-                },
+</div><!-- /main-grid -->
 
-                async fetchHeatmap() {
-                    try {
-                        const res = await fetch('/api/heatmap', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ asset_class: this.assetClass })
-                        });
-                        this.heatmapData = await res.json();
-                    } catch (e) { console.error(e); }
-                },
+<!-- ══════ BOTTOM PANEL ══════ -->
+<div class="glass bottom-panel">
+  <div class="btabs">
+    <button class="btab on" onclick="showTab('heatmap',this)">🗺 Heatmap</button>
+    <button class="btab" onclick="showTab('history',this)">📋 Trade History</button>
+  </div>
 
-                formatPrice(p) {
-                    if (!p && p !== 0) return '--';
-                    if (p > 1000) return p.toFixed(0);
-                    if (p > 1) return p.toFixed(2);
-                    return p.toFixed(5);
-                },
+  <div id="tab-heatmap">
+    <div class="hmap" id="hmap">
+      <div class="loading-state"><div class="spin"></div><span>Loading heatmap...</span></div>
+    </div>
+  </div>
 
-                priceClass(sym, price) {
-                    const prev = this.previousPrices[sym];
-                    if (prev && price > prev) return 'text-green-600 dark:text-green-400 price-updated';
-                    if (prev && price < prev) return 'text-red-600 dark:text-red-400 price-updated';
-                    return '';
-                },
+  <div id="tab-history" style="display:none">
+    <div class="htable-wrap">
+      <table class="htable">
+        <thead><tr>
+          <th>Time</th><th>Symbol</th><th>Style</th><th>Dir</th>
+          <th>Entry</th><th>TP</th><th>SL</th><th>Lev</th>
+          <th>R:R</th><th>Conf</th><th>ATR%</th><th>TF</th><th>Status</th>
+        </tr></thead>
+        <tbody id="htbody">
+          <tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text3)">No trades yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
-                async generateTrade() {
-                    this.loading = true;
-                    let duration = this.totalMinutes;
-                    if (this.tradeType === 'scalp') duration = 15;
-                    if (this.tradeType === 'intraday') duration = 240;
+</div><!-- /app -->
+<div id="toasts"></div>
 
-                    try {
-                        const res = await fetch('/api/scan', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ asset_class: this.assetClass, duration: duration })
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                            this.signals = data.signals;
-                            // Save to history
-                            data.signals.forEach(s => {
-                                this.tradeHistory.unshift({
-                                    asset: s.asset,
-                                    direction: s.direction,
-                                    entry: s.entry
-                                });
-                            });
-                            if (this.tradeHistory.length > 10) this.tradeHistory = this.tradeHistory.slice(0,10);
-                            localStorage.setItem('tradeHistory', JSON.stringify(this.tradeHistory));
-                        } else {
-                            alert(data.message || 'No trades found');
-                        }
-                    } catch (e) {
-                        alert('Error: ' + e.message);
-                    } finally {
-                        this.loading = false;
-                    }
-                }
-            }
-        }
-    </script>
+<script>
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+const S = {
+  cat:       'crypto',
+  type:      'intraday',
+  dur:       null,
+  sessId:    'sess_' + Math.random().toString(36).slice(2,10),
+  sigCount:  0,
+  confSum:   0,
+  timers:    {},
+  theme:     localStorage.getItem('theme') || 'dark',
+};
+
+// Apply saved theme
+if(S.theme === 'light'){ document.body.classList.add('light'); document.getElementById('theme-btn').textContent='☀️'; }
+
+// ══════════════════════════════════════════
+//  THEME
+// ══════════════════════════════════════════
+function toggleTheme(){
+  S.theme = S.theme==='dark' ? 'light' : 'dark';
+  document.body.classList.toggle('light', S.theme==='light');
+  document.getElementById('theme-btn').textContent = S.theme==='dark' ? '🌙' : '☀️';
+  localStorage.setItem('theme', S.theme);
+}
+
+// ══════════════════════════════════════════
+//  SELECTORS
+// ══════════════════════════════════════════
+function setCat(cat, el){
+  S.cat = cat;
+  document.querySelectorAll('[data-cat]').forEach(e=>e.classList.remove('a-cat'));
+  el.classList.add('a-cat');
+  loadTicker();
+}
+function setType(type, el){
+  S.type = type;
+  document.querySelectorAll('[data-type]').forEach(e=>e.classList.remove('a-type'));
+  el.classList.add('a-type');
+}
+function setDur(val, el){
+  S.dur = val ? parseInt(val) : null;
+  document.querySelectorAll('[data-dur]').forEach(e=>e.classList.remove('a-dur'));
+  el.classList.add('a-dur');
+  document.getElementById('cdur').value = '';
+}
+function setCustomDur(val){
+  if(val && parseInt(val) > 0){
+    S.dur = parseInt(val);
+    document.querySelectorAll('[data-dur]').forEach(e=>e.classList.remove('a-dur'));
+  }
+}
+function toggleNP(){ document.getElementById('npanel').classList.toggle('open'); }
+function showTab(tab, el){
+  document.querySelectorAll('.btab').forEach(e=>e.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('tab-heatmap').style.display = tab==='heatmap'?'':'none';
+  document.getElementById('tab-history').style.display = tab==='history'?'':'none';
+  if(tab==='history') loadHistory();
+}
+
+// ══════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════
+function toast(msg, type='i', dur=5000){
+  if(!document.getElementById('p-inapp').checked && type!=='e') return;
+  const c = document.getElementById('toasts');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span>${{s:'✅',e:'❌',i:'ℹ️'}[type]||'ℹ️'}</span><span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(30px)'; t.style.transition='all .3s'; setTimeout(()=>t.remove(),300); }, dur);
+  // Notification log
+  const log = document.getElementById('nlog');
+  const item = document.createElement('div');
+  item.className='nlog-item';
+  item.innerHTML=`<strong>${msg}</strong><br><span style="color:var(--text3)">${new Date().toLocaleTimeString()}</span>`;
+  log.insertBefore(item, log.firstChild);
+  if(log.children.length > 20) log.lastChild.remove();
+}
+
+// ══════════════════════════════════════════
+//  FORMAT
+// ══════════════════════════════════════════
+function fmt(n, d=4){
+  if(n==null) return '–';
+  const v=parseFloat(n);
+  if(isNaN(v)) return '–';
+  if(v>=10000)  return v.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(v>=100)    return v.toFixed(2);
+  if(v>=1)      return v.toFixed(d);
+  return v.toPrecision(5);
+}
+function fmtTime(iso){ return new Date(iso).toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'}); }
+function md(text){
+  return text
+    .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+    .replace(/^(━+)$/gm,'<span style="color:var(--gb2)">$1</span>')
+    .replace(/^(🟢|🔴)/gm,'<span style="font-size:14px">$1</span>');
+}
+
+// ══════════════════════════════════════════
+//  SESSION
+// ══════════════════════════════════════════
+async function loadSession(){
+  try{
+    const d = await fetch('/api/session').then(r=>r.json());
+    const b = document.getElementById('sess-badge');
+    const cols = {ASIAN:'#f59e0b',LONDON:'#10b981',NY_OPEN:'#00d4ff',NY_CLOSE:'#94a3b8'};
+    const c = cols[d.session]||'#10b981';
+    b.textContent = `🌐 ${d.session.replace('_',' ')}`;
+    b.style.cssText = `background:${c}18;border:1px solid ${c}40;color:${c};padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase`;
+    document.getElementById('s-sess').textContent = d.session.replace('_',' ').split(' ')[0];
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════
+//  LIVE TICKER
+// ══════════════════════════════════════════
+async function loadTicker(){
+  try{
+    const prices = await fetch(`/api/prices/${S.cat}`).then(r=>r.json());
+    const entries = Object.entries(prices).slice(0,20);
+    const html = entries.map(([sym,d])=>{
+      const chg=d.change||0, up=chg>=0;
+      return `<span class="t-item">
+        <span class="t-sym">${sym}</span>
+        <span class="t-price" style="color:${up?'var(--green)':'var(--red)'}">$${fmt(d.price,2)}</span>
+        <span class="t-chg ${up?'up':'dn'}">${up?'▲':'▼'}${Math.abs(chg).toFixed(2)}%</span>
+      </span>`;
+    }).join('');
+    document.getElementById('ticker').innerHTML = html+html;
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════
+//  HEATMAP (real data)
+// ══════════════════════════════════════════
+async function loadHeatmap(){
+  const g = document.getElementById('hmap');
+  g.innerHTML='<div class="loading-state"><div class="spin"></div><span>Loading real market data...</span></div>';
+  try{
+    const data = await fetch('/api/heatmap').then(r=>r.json());
+    if(!data.length){ g.innerHTML='<p style="padding:20px;color:var(--text3)">No data</p>'; return; }
+    g.innerHTML = data.map(item=>{
+      const chg=item.change||0, abs_c=Math.abs(chg);
+      const intensity = Math.min(abs_c/10, 1);
+      let bg = chg>0 ? `rgba(16,185,129,${0.18+intensity*0.55})`
+             : chg<0 ? `rgba(239,68,68,${0.18+intensity*0.55})`
+             : 'rgba(100,116,139,0.25)';
+      const arrow=chg>=0?'▲':'▼';
+      return `<div class="hm-cell" style="background:${bg}">
+        <div class="hm-s">${item.symbol.replace('/USDT','')}</div>
+        <div class="hm-p">$${fmt(item.price)}</div>
+        <div class="hm-c">${arrow}${abs_c.toFixed(2)}%</div>
+      </div>`;
+    }).join('');
+  }catch(e){ g.innerHTML='<p style="padding:20px;color:var(--text3)">Failed to load</p>'; }
+}
+
+// ══════════════════════════════════════════
+//  TRADE HISTORY
+// ══════════════════════════════════════════
+async function loadHistory(){
+  try{
+    const trades = await fetch('/api/history?limit=50').then(r=>r.json());
+    const tb = document.getElementById('htbody');
+    if(!trades.length){ tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text3)">No signals generated yet</td></tr>'; return; }
+    tb.innerHTML = trades.map(t=>`<tr>
+      <td style="color:var(--text3);font-family:var(--mono)">${fmtTime(t.timestamp)}</td>
+      <td style="font-weight:700">${t.symbol}</td>
+      <td style="color:var(--text3)">${t.trade_type}</td>
+      <td><span class="hdir ${t.direction}">${t.direction}</span></td>
+      <td style="font-family:var(--mono)">${fmt(t.entry)}</td>
+      <td style="color:var(--green);font-family:var(--mono)">${fmt(t.tp)}</td>
+      <td style="color:var(--red);font-family:var(--mono)">${fmt(t.sl)}</td>
+      <td style="color:var(--accent3);font-weight:700">${t.leverage}x</td>
+      <td style="color:var(--yellow);font-weight:700">${t.rr_ratio}:1</td>
+      <td style="color:var(--accent);font-family:var(--mono)">${t.confidence}%</td>
+      <td style="color:var(--text2);font-family:var(--mono)">${t.atr_pct||'–'}%</td>
+      <td style="color:var(--text3)">${t.timeframe}</td>
+      <td><span class="hstatus ${t.status}">${t.status}</span></td>
+    </tr>`).join('');
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════
+//  GENERATE SIGNAL
+// ══════════════════════════════════════════
+async function generate(){
+  const btn = document.getElementById('gen-btn');
+  const fill = document.getElementById('scan-fill');
+  const status = document.getElementById('scan-status');
+  btn.classList.add('loading');
+  btn.textContent = '🔍 Scanning Live Market...';
+
+  // Animate scan progress
+  let pct = 0;
+  const msgs = [
+    'Fetching live candles from Binance...',
+    'Calculating RSI, MACD, Bollinger Bands...',
+    'Computing EMA stack, ATR, Fibonacci...',
+    'Running divergence & pattern detection...',
+    'Scoring indicator confluence...',
+    'Selecting highest probability setup...'
+  ];
+  let mi = 0;
+  const scanTimer = setInterval(()=>{
+    pct = Math.min(pct + 3, 90);
+    fill.style.width = pct+'%';
+    if(mi < msgs.length){ status.textContent = msgs[mi++]; }
+  }, 250);
+
+  // Show loading state
+  document.getElementById('signal-wrap').innerHTML = `
+    <div class="loading-state">
+      <div class="spin"></div>
+      <div style="font-weight:700;color:var(--text2)">Real Market Analysis in Progress</div>
+      <div style="font-size:12px;color:var(--text3)">Scanning ${S.cat==='crypto'?'25 crypto':'15 forex'} assets with live candle data...</div>
+    </div>`;
+
+  try{
+    const res = await fetch('/api/signal',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        trade_type:     S.type,
+        category:       S.cat,
+        session_id:     S.sessId,
+        custom_minutes: S.dur||null
+      })
+    });
+    const sig = await res.json();
+    clearInterval(scanTimer);
+    fill.style.width='100%';
+    status.textContent = sig.error ? 'No setup found' : `Found: ${sig.symbol} | ${sig.candidates_scanned||'?'} assets scanned`;
+    setTimeout(()=>{ fill.style.width='0%'; },2000);
+
+    if(sig.error){
+      toast(sig.error,'e');
+      document.getElementById('signal-wrap').innerHTML=`
+        <div class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <div style="font-size:16px;font-weight:700;color:var(--red)">${sig.error}</div>
+        </div>`;
+    } else {
+      S.sigCount++;
+      S.confSum += sig.confidence;
+      document.getElementById('s-signals').textContent = S.sigCount;
+      document.getElementById('s-avg').textContent = (S.confSum/S.sigCount).toFixed(0)+'%';
+      renderSignal(sig);
+      doNotify(sig);
+    }
+  }catch(e){
+    clearInterval(scanTimer);
+    fill.style.width='0%';
+    toast('Network error – check connection','e');
+    document.getElementById('signal-wrap').innerHTML=`<div class="empty-state"><div class="empty-icon">⚠️</div><div>Connection error</div></div>`;
+  }
+
+  btn.classList.remove('loading');
+  btn.textContent = '⚡ Generate Trade Signal';
+}
+
+function doNotify(sig){
+  if(!document.getElementById('p-inapp').checked) return;
+  if(sig.category==='crypto' && !document.getElementById('p-crypto').checked) return;
+  if(sig.category==='forex'  && !document.getElementById('p-forex').checked)  return;
+  if(document.getElementById('p-hq').checked && sig.confidence < 75) return;
+  toast(`🎯 ${sig.direction} ${sig.symbol} | Conf: ${sig.confidence}% | ${sig.leverage}x | TP:${fmt(sig.tp)} SL:${fmt(sig.sl)}`,'s',7000);
+  if(document.getElementById('p-sound').checked){
+    try{
+      const ctx=new(window.AudioContext||window.webkitAudioContext)();
+      const o=ctx.createOscillator(); const g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value=sig.direction==='LONG'?880:660;
+      g.gain.setValueAtTime(0.08,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);
+      o.start(); o.stop(ctx.currentTime+0.4);
+    }catch(e){}
+  }
+}
+
+// ══════════════════════════════════════════
+//  RENDER SIGNAL
+// ══════════════════════════════════════════
+function renderSignal(s){
+  const inds = s.indicators||{};
+  const isLong = s.direction==='LONG';
+  const arrow  = isLong ? '↑' : '↓';
+
+  // Price bar position (SL to TP, entry dot)
+  const sl=parseFloat(s.sl), tp=parseFloat(s.tp), en=parseFloat(s.entry);
+  let barLeft = 50;
+  try{ barLeft = Math.max(5,Math.min(95,(en-sl)/(tp-sl)*100)); }catch(e){}
+
+  // Build confirmation tags
+  const confs = (s.confirmations||[]).slice(0,10);
+  const confTags = confs.map(c=>{
+    const lc=c.toLowerCase();
+    const isBull = lc.includes('bull')||lc.includes('over'+'sold')||lc.includes('above')||lc.includes('uptrend')||lc.includes('hammer')||lc.includes('engulfing');
+    const isBear = lc.includes('bear')||lc.includes('over'+'bought')||lc.includes('below')||lc.includes('downtrend')||lc.includes('shooting');
+    const cls = isBull?'bull':isBear?'bear':'neutral';
+    return `<span class="confirm-tag ${cls}">${c}</span>`;
+  }).join('');
+
+  // Indicator values
+  const rsi    = inds.rsi_14;
+  const macd   = inds.macd||{};
+  const bb     = inds.bollinger||{};
+  const stoch  = inds.stoch||{};
+  const vol    = inds.volume||{};
+  const pat    = (inds.pattern||'NONE').replace(/_/g,' ');
+  const div    = (inds.divergence||'NONE').replace(/_/g,' ');
+  const struct = inds.structure||'RANGING';
+
+  function rsiColor(r){ return r<30?'bull':r>70?'bear':'neutral'; }
+  function bbColor(p){ return p<0.3?'bull':p>0.7?'bear':'neutral'; }
+
+  const wrap = document.getElementById('signal-wrap');
+  wrap.innerHTML = `
+  <div class="sig-card">
+
+    <!-- HEADER -->
+    <div class="sig-head">
+      <div class="sig-left">
+        <div class="sig-avatar">${s.symbol.split('/')[0].slice(0,2)}</div>
+        <div>
+          <div class="sig-title">${s.symbol}</div>
+          <div class="sig-sub">${s.category.toUpperCase()} · ${s.timeframe} Chart · ${s.trade_type.toUpperCase()} · ID ${s.id}</div>
+        </div>
+      </div>
+      <div class="sig-right">
+        <span class="conf-pill">🎯 ${s.confidence}% Confidence</span>
+        <span class="dir-badge ${s.direction}">${arrow} ${s.direction}</span>
+      </div>
+    </div>
+
+    <!-- METRICS -->
+    <div class="metrics">
+      <div class="metric m-entry">
+        <div class="lbl">Entry Price</div>
+        <div class="val">$${fmt(s.entry)}</div>
+        <div class="sub">Bid: ${fmt(s.bid)} · Ask: ${fmt(s.ask)}</div>
+      </div>
+      <div class="metric m-tp">
+        <div class="lbl">Take Profit ${isLong?'▲':'▼'}</div>
+        <div class="val">$${fmt(s.tp)}</div>
+        <div class="sub">+${s.tp_pct}% from entry</div>
+      </div>
+      <div class="metric m-sl">
+        <div class="lbl">Stop Loss ${isLong?'▼':'▲'} (ATR×1.5)</div>
+        <div class="val">$${fmt(s.sl)}</div>
+        <div class="sub">-${s.sl_pct}% buffer zone</div>
+      </div>
+      <div class="metric m-lev">
+        <div class="lbl">Dynamic Leverage</div>
+        <div class="val">${s.leverage}x</div>
+        <div class="sub">ATR: ${s.atr_pct}% vol</div>
+      </div>
+      <div class="metric m-dur">
+        <div class="lbl">Target Duration</div>
+        <div class="val">${s.duration_str}</div>
+        <div class="sub">Close by this time</div>
+      </div>
+      <div class="metric m-rr">
+        <div class="lbl">Risk : Reward</div>
+        <div class="val">${s.rr_ratio}:1</div>
+        <div class="sub">Bull ${s.bull_score} · Bear ${s.bear_score}</div>
+      </div>
+    </div>
+
+    <!-- PRICE BAR -->
+    <div class="range-bar">
+      <div class="range-track">
+        <div class="range-dot" style="left:${barLeft}%"></div>
+      </div>
+      <div class="range-labels">
+        <span style="color:var(--red)">SL $${fmt(s.sl)}</span>
+        <span style="color:var(--accent)">ENTRY $${fmt(s.entry)}</span>
+        <span style="color:var(--green)">TP $${fmt(s.tp)}</span>
+      </div>
+    </div>
+
+    <!-- CONFIDENCE -->
+    <div class="conf-wrap">
+      <div class="conf-head">
+        <span>Signal Confidence (${confs.length} real indicators)</span>
+        <strong style="color:var(--accent)">${s.confidence}%</strong>
+      </div>
+      <div class="conf-track"><div class="conf-fill" id="cfill" style="width:0"></div></div>
+      <div class="score-row">
+        <div class="score-pill bull">▲ Bullish Score: ${s.bull_score}</div>
+        <div class="score-pill bear">▼ Bearish Score: ${s.bear_score}</div>
+      </div>
+    </div>
+
+    <!-- CONFIRMATIONS -->
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);margin-bottom:7px">
+      Real Indicator Signals
+    </div>
+    <div class="confirms">${confTags}</div>
+
+    <!-- INDICATOR GRID -->
+    <div class="ind-grid">
+      <div class="ind-cell">
+        <div class="il">RSI(14)</div>
+        <div class="iv ${rsiColor(rsi)}">${rsi}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">MACD Hist</div>
+        <div class="iv ${macd.histogram>0?'bull':'bear'}">${(macd.histogram||0).toFixed(6)}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">BB %B</div>
+        <div class="iv ${bbColor(bb.pct_b)}">${(bb.pct_b||0.5).toFixed(3)}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">Stoch K</div>
+        <div class="iv ${stoch.k<20?'bull':stoch.k>80?'bear':'neutral'}">${stoch.k||50}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">EMA21</div>
+        <div class="iv ${s.entry>inds.ema21?'bull':'bear'}">${fmt(inds.ema21)}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">EMA50</div>
+        <div class="iv ${s.entry>inds.ema50?'bull':'bear'}">${fmt(inds.ema50)}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">VWAP</div>
+        <div class="iv ${s.entry>(inds.vwap||0)?'bull':'bear'}">${fmt(inds.vwap)}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">OBV Trend</div>
+        <div class="iv ${vol.obv_trend==='UP'?'bull':vol.obv_trend==='DOWN'?'bear':'neutral'}">${vol.obv_trend||'–'}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">Structure</div>
+        <div class="iv ${struct==='UPTREND'?'bull':struct==='DOWNTREND'?'bear':'neutral'}">${struct}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">Divergence</div>
+        <div class="iv ${div.includes('BULL')?'bull':div.includes('BEAR')?'bear':'neutral'}">${div}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">Candle</div>
+        <div class="iv neutral" style="font-size:11px">${pat}</div>
+      </div>
+      <div class="ind-cell">
+        <div class="il">ATR(14)</div>
+        <div class="iv neutral">${s.atr}</div>
+      </div>
+    </div>
+
+    <!-- REASON / ANALYSIS -->
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);margin-bottom:7px">
+      Full Analysis
+    </div>
+    <div class="reason-box">${md(s.reason||'')}</div>
+
+    <!-- TIMER -->
+    <div class="timer-row">
+      <div class="timer-label">⏱ Trade closes in</div>
+      <div class="timer-val" id="tmr-${s.id}">--:--</div>
+      <button class="close-trade-btn" onclick="closeTrade('${s.id}')">✕ Close Trade</button>
+    </div>
+
+    <!-- META CHIPS -->
+    <div class="meta-chips">
+      <div class="chip"><div class="cl">24h Change</div><div class="cv" style="color:${(s.change_24h||0)>=0?'var(--green)':'var(--red)'}">${(s.change_24h||0).toFixed(2)}%</div></div>
+      <div class="chip"><div class="cl">Session</div><div class="cv" style="color:var(--accent)">${s.session||'–'}</div></div>
+      <div class="chip"><div class="cl">Volatility</div><div class="cv" style="color:${s.volatility==='HIGH'?'var(--red)':s.volatility==='LOW'?'var(--yellow)':'var(--green)'}">${s.volatility||'–'}</div></div>
+      <div class="chip"><div class="cl">News</div><div class="cv">${(s.news||{}).status||'SAFE ✅'}</div></div>
+      <div class="chip"><div class="cl">Data Source</div><div class="cv" style="color:var(--green);text-transform:capitalize">${s.price_source||'–'}</div></div>
+      <div class="chip"><div class="cl">Vol ×Ratio</div><div class="cv" style="color:var(--accent)">${((s.indicators||{}).volume||{}).vol_ratio||'–'}×</div></div>
+    </div>
+
+  </div>`;
+
+  // Animate confidence fill
+  setTimeout(()=>{
+    const f=document.getElementById('cfill');
+    if(f) f.style.width=s.confidence+'%';
+  },100);
+
+  startTimer(s.id, s.duration_min*60);
+}
+
+// ══════════════════════════════════════════
+//  COUNTDOWN TIMER
+// ══════════════════════════════════════════
+function startTimer(id, secs){
+  if(S.timers[id]) clearInterval(S.timers[id]);
+  let rem=secs;
+  S.timers[id]=setInterval(()=>{
+    const el=document.getElementById('tmr-'+id);
+    if(!el){ clearInterval(S.timers[id]); return; }
+    if(rem<=0){
+      el.textContent='EXPIRED'; el.style.color='var(--red)';
+      clearInterval(S.timers[id]);
+      toast(`Trade ${id} duration expired — close your position!`,'i');
+      return;
+    }
+    const d=Math.floor(rem/86400), h=Math.floor((rem%86400)/3600);
+    const m=Math.floor((rem%3600)/60), s=rem%60;
+    el.textContent = d>0
+      ? `${d}d ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
+      : `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    rem--;
+  },1000);
+}
+
+async function closeTrade(id){
+  try{
+    await fetch(`/api/history/close/${id}`,{method:'POST'});
+    if(S.timers[id]) clearInterval(S.timers[id]);
+    toast(`Trade ${id} closed`,'s');
+    loadHistory();
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════
+//  AUTO-REFRESH
+// ══════════════════════════════════════════
+setInterval(loadSession, 60000);
+setInterval(loadTicker,  30000);
+setInterval(loadHeatmap, 90000);
+
+// Init
+loadSession();
+loadTicker();
+loadHeatmap();
+</script>
 </body>
 </html>
