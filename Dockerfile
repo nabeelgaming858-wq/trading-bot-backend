@@ -16,25 +16,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── Working directory ─────────────────────────────────────────────────────────
 WORKDIR /app
 
-# ── Install Python dependencies ───────────────────────────────────────────────
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+# ── Install Python dependencies first (better layer caching) ──────────────────
+COPY requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# ── Copy application files ────────────────────────────────────────────────────
-COPY app.py .
-COPY index.html .
+# ── Copy EACH file explicitly (avoids .dockerignore issues) ───────────────────
+COPY app.py ./app.py
+COPY index.html ./index.html
 
 # ── Expose port ───────────────────────────────────────────────────────────────
 EXPOSE 8080
 
-# ── Health check ──────────────────────────────────────────────────────────────
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+# ── Healthcheck ───────────────────────────────────────────────────────────────
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# ── Start with Gunicorn (production WSGI server) ──────────────────────────────
+# ── Start with Gunicorn ───────────────────────────────────────────────────────
 CMD exec gunicorn \
-    --bind 0.0.0.0:${PORT} \
+    --bind "0.0.0.0:${PORT}" \
     --workers 2 \
     --threads 4 \
     --timeout 120 \
