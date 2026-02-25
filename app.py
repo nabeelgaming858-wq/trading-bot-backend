@@ -5,7 +5,6 @@ import threading
 from datetime import datetime, timedelta
 from collections import deque
 from functools import lru_cache
-import math
 
 import requests
 import pandas as pd
@@ -20,7 +19,6 @@ from ta.volume import OnBalanceVolumeIndicator
 app = Flask(__name__)
 
 # ==================== CONFIGURATION ====================
-# Asset lists (crypto 25, forex 15)
 CRYPTO_ASSETS = [
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT",
     "DOTUSDT", "MATICUSDT", "SHIBUSDT", "TRXUSDT", "AVAXUSDT", "UNIUSDT", "ATOMUSDT",
@@ -33,31 +31,31 @@ FOREX_ASSETS = [
     "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "EURAUD", "GBPCHF", "USDNOK", "USDSEK"
 ]
 
-# Timeframes mapping for trade types
+# Default timeframes for trade types
 TRADE_TIMEFRAMES = {
     "scalp": "15m",
     "intraday": "1h",
-    "swing": "4h",
-    "custom": "1h"  # default for custom, will be overridden
+    "swing": "4h"
 }
 
-# Cache for OHLC data
+# All available intervals for custom selection (Binance-compatible)
+AVAILABLE_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+
+# Cache
 data_cache = {}
 cache_lock = threading.Lock()
 CACHE_DURATION = 60  # seconds
 
-# Binance API base (no key needed for public endpoints)
+# APIs (free, no keys)
 BINANCE_BASE = "https://api.binance.com/api/v3"
-
-# Forex API (exchangerate.host - free, no key)
 FOREX_BASE = "https://api.exchangerate.host"
 
-# Keep track of last recommended assets to avoid repeats
-last_assets = deque(maxlen=15)  # Increased to track more assets
+# Keep track of last recommended assets to avoid repeats (optional, but we now return top 3)
+last_assets = deque(maxlen=10)
 
 # ==================== HELPER FUNCTIONS ====================
 def fetch_binance_klines(symbol, interval, limit=100):
-    """Fetch OHLC data from Binance for crypto assets."""
+    """Fetch OHLC data from Binance."""
     url = f"{BINANCE_BASE}/klines"
     params = {"symbol": symbol, "interval": interval, "limit": limit}
     try:
@@ -79,9 +77,11 @@ def fetch_binance_klines(symbol, interval, limit=100):
         return None
 
 def fetch_forex_ohlc(symbol, interval, limit=100):
-    """Fetch OHLC for forex pairs from exchangerate.host."""
+    """
+    Fetch forex data (simulated intraday from daily).
+    """
     try:
-        days_map = {"15m": 2, "1h": 7, "4h": 30, "1d": 60, "1w": 180}
+        days_map = {"1m": 1, "5m": 1, "15m": 2, "30m": 3, "1h": 7, "4h": 30, "1d": 90}
         days = days_map.get(interval, 7)
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -116,7 +116,6 @@ def fetch_forex_ohlc(symbol, interval, limit=100):
         return None
 
 def get_ohlc(asset, asset_type, timeframe):
-    """Get OHLC data from cache or fetch."""
     cache_key = f"{asset}_{timeframe}"
     now = time.time()
     with cache_lock:
@@ -132,12 +131,10 @@ def get_ohlc(asset, asset_type, timeframe):
     return df
 
 def calculate_indicators(df):
-    """Add technical indicators to dataframe."""
     df = add_all_ta_features(df, open="open", high="high", low="low", close="close", volume="volume", fillna=True)
     return df
 
 def find_swing_points(df, window=5):
-    """Find recent swing high and low."""
     df["swing_high"] = df["high"].rolling(window=window, center=True).max()
     df["swing_low"] = df["low"].rolling(window=window, center=True).min()
     last_swing_high = df["swing_high"].iloc[-2] if len(df) > 2 else df["high"].iloc[-1]
@@ -145,7 +142,6 @@ def find_swing_points(df, window=5):
     return last_swing_high, last_swing_low
 
 def calculate_dynamic_leverage(volatility_percent, asset_type):
-    """Determine leverage based on volatility."""
     if asset_type == "crypto":
         base_max = 10
     else:
@@ -161,100 +157,19 @@ def calculate_dynamic_leverage(volatility_percent, asset_type):
     else:
         return int(base_max * 0.2)
 
-def calculate_duration(asset_type, trade_type, atr, price, custom_minutes=None):
-    """Estimate duration based on ATR, trade type, or custom input."""
-    if custom_minutes:
-        # Convert custom minutes to readable format
-        if custom_minutes < 60:
-            return f"{custom_minutes}m"
-        elif custom_minutes < 1440:
-            hours = custom_minutes // 60
-            return f"{hours}h"
-        else:
-            days = custom_minutes // 1440
-            return f"{days}d"
-    
+def calculate_duration(asset_type, trade_type, atr, price):
     if trade_type == "scalp":
         return "2h"
     elif trade_type == "intraday":
         return "24h"
-    elif trade_type == "swing":
+    else:  # swing
         return "7d"
-    else:
-        return "1h"
 
-def map_duration_to_timeframe(duration_str):
-    """Convert duration string to Binance interval format."""
-    if duration_str.endswith('m'):
-        minutes = int(duration_str[:-1])
-        if minutes <= 15:
-            return "15m"
-        elif minutes <= 30:
-            return "30m"
-        elif minutes <= 60:
-            return "1h"
-        elif minutes <= 240:
-            return "4h"
-        else:
-            return "1h"
-    elif duration_str.endswith('h'):
-        hours = int(duration_str[:-1])
-        if hours <= 1:
-            return "1h"
-        elif hours <= 4:
-            return "4h"
-        elif hours <= 24:
-            return "1d"
-        else:
-            return "1d"
-    elif duration_str.endswith('d'):
-        return "1d"
-    else:
-        return "1h"
-
-def calculate_signal_score(signal):
-    """Calculate a numerical score for ranking signals."""
-    score = 0
-    # Confidence contributes
-    if signal["confidence"] == "High":
-        score += 50
-    elif signal["confidence"] == "Medium":
-        score += 30
-    
-    # Risk-reward ratio contributes
-    entry = signal["entry"]
-    sl = signal["stop_loss"]
-    tp = signal["take_profit"]
-    
-    if signal["signal"] == "LONG":
-        risk = entry - sl
-        reward = tp - entry
-    else:
-        risk = sl - entry
-        reward = entry - tp
-    
-    if risk > 0:
-        rr_ratio = reward / risk
-        score += min(30, rr_ratio * 10)  # Cap at 30 points
-    
-    # Confluence count contributes
-    rationale = signal.get("rationale", "")
-    confluence_count = rationale.count("|") + 1
-    score += confluence_count * 5
-    
-    return score
-
-def generate_signal(asset, asset_type, trade_type, custom_duration=None):
+def analyze_asset(asset, asset_type, timeframe, trade_type):
     """
-    Main signal generation logic.
-    Returns a dict with signal details or None if no trade.
+    Generate a signal for a single asset. Returns None if data insufficient,
+    otherwise a dict with signal details and a score.
     """
-    # Determine timeframe
-    if custom_duration:
-        timeframe = map_duration_to_timeframe(custom_duration)
-    else:
-        timeframe = TRADE_TIMEFRAMES.get(trade_type, "1h")
-    
     df = get_ohlc(asset, asset_type, timeframe)
     if df is None or len(df) < 50:
         return None
@@ -269,7 +184,7 @@ def generate_signal(asset, asset_type, trade_type, custom_duration=None):
 
     swing_high, swing_low = find_swing_points(df)
 
-    # Trend identification
+    # Trend and indicators
     ema21 = last.get("trend_ema_fast", last.get("EMA_21", price))
     ema50 = last.get("EMA_50", price)
     macd = last.get("MACD_macd", 0)
@@ -278,7 +193,7 @@ def generate_signal(asset, asset_type, trade_type, custom_duration=None):
     bb_high = last.get("volatility_bbh", price * 1.02)
     bb_low = last.get("volatility_bbl", price * 0.98)
 
-    # Determine trend
+    # Trend direction
     if price > ema21 and ema21 > ema50:
         trend = "bullish"
     elif price < ema21 and ema21 < ema50:
@@ -286,23 +201,23 @@ def generate_signal(asset, asset_type, trade_type, custom_duration=None):
     else:
         trend = "neutral"
 
-    # Confluence score
+    # Confluence scoring (0-4)
     confluence = 0
     reasons = []
 
     if trend == "bullish":
         confluence += 1
-        reasons.append(f"Price above EMA21/50 ({trend} trend)")
+        reasons.append("Price above EMA21/50 (bullish trend)")
     elif trend == "bearish":
         confluence += 1
-        reasons.append(f"Price below EMA21/50 ({trend} trend)")
+        reasons.append("Price below EMA21/50 (bearish trend)")
 
     if price <= bb_low and last["close"] > bb_low:
         confluence += 1
-        reasons.append("Price bounced off lower Bollinger Band")
+        reasons.append("Bollinger bounce (bullish)")
     elif price >= bb_high and last["close"] < bb_high:
         confluence += 1
-        reasons.append("Price rejected off upper Bollinger Band")
+        reasons.append("Bollinger rejection (bearish)")
 
     if macd > macd_signal and prev.get("MACD_macd", 0) <= prev.get("MACD_signal", 0):
         confluence += 1
@@ -313,29 +228,25 @@ def generate_signal(asset, asset_type, trade_type, custom_duration=None):
 
     if rsi < 30 and last["close"] > prev["close"]:
         confluence += 1
-        reasons.append("RSI oversold with price increase")
+        reasons.append("RSI oversold bullish divergence")
     elif rsi > 70 and last["close"] < prev["close"]:
         confluence += 1
-        reasons.append("RSI overbought with price decrease")
+        reasons.append("RSI overbought bearish divergence")
 
-    if confluence < 3:
-        return None
-
-    # Determine direction
+    # Determine direction based on bullish/bearish reasons count
     bullish_count = sum(1 for r in reasons if "bull" in r.lower())
     bearish_count = sum(1 for r in reasons if "bear" in r.lower())
-    
     if bullish_count > bearish_count:
         direction = "LONG"
     elif bearish_count > bullish_count:
         direction = "SHORT"
     else:
         direction = "LONG" if trend == "bullish" else "SHORT" if trend == "bearish" else None
-    
+
     if not direction:
         return None
 
-    # Calculate SL/TP with ATR buffer
+    # Compute SL with ATR buffer
     buffer = atr * 1.5
     if direction == "LONG":
         sl = swing_low - buffer
@@ -346,24 +257,23 @@ def generate_signal(asset, asset_type, trade_type, custom_duration=None):
         entry = price
         tp = entry - (sl - entry) * 1.5
 
-    # Dynamic leverage
     volatility_pct = (atr / price) * 100
     leverage = calculate_dynamic_leverage(volatility_pct, asset_type)
+    duration = calculate_duration(asset_type, trade_type, atr, price)
 
-    # Duration
-    if custom_duration:
-        # Extract minutes from custom duration string
-        if custom_duration.endswith('m'):
-            minutes = int(custom_duration[:-1])
-        elif custom_duration.endswith('h'):
-            minutes = int(custom_duration[:-1]) * 60
-        elif custom_duration.endswith('d'):
-            minutes = int(custom_duration[:-1]) * 1440
-        else:
-            minutes = 60
-        duration = calculate_duration(asset_type, trade_type, atr, price, minutes)
-    else:
-        duration = calculate_duration(asset_type, trade_type, atr, price)
+    # Compute a score for ranking (higher is better)
+    # Base score from confluence (0-4) * 10 + extra for trend strength, etc.
+    score = confluence * 10
+    # Add small bonus for RSI momentum
+    if 40 < rsi < 60:
+        score += 2  # neutral zone, less risk
+    if direction == "LONG" and trend == "bullish":
+        score += 5
+    elif direction == "SHORT" and trend == "bearish":
+        score += 5
+    # Penalize very high volatility
+    if volatility_pct > 5:
+        score -= 5
 
     signal = {
         "asset": asset,
@@ -374,56 +284,57 @@ def generate_signal(asset, asset_type, trade_type, custom_duration=None):
         "leverage": leverage,
         "duration": duration,
         "timeframe": timeframe,
-        "confidence": "High" if confluence >= 4 else "Medium",
+        "confidence": "High" if confluence >= 3 else "Medium",
         "rationale": " | ".join(reasons[:3]),
-        "score": 0  # Will be calculated later
+        "score": score
     }
-    
-    # Calculate and add score
-    signal["score"] = calculate_signal_score(signal)
     return signal
 
-def get_top_trades(asset_type, trade_type, count=3, custom_duration=None):
-    """Scan all assets and return top N best signals (excluding repeats)."""
+def get_top_trades(asset_type, trade_type, custom_timeframe=None, n=3):
+    """
+    Return top n trades for the given asset type, sorted by score descending.
+    """
     assets = CRYPTO_ASSETS if asset_type == "crypto" else FOREX_ASSETS
+    # Determine timeframe: custom overrides trade_type default
+    if custom_timeframe and custom_timeframe in AVAILABLE_TIMEFRAMES:
+        timeframe = custom_timeframe
+    else:
+        timeframe = TRADE_TIMEFRAMES.get(trade_type, "1h")
+
     signals = []
-    
     for asset in assets:
-        # Skip recently recommended assets for variety
-        if asset in last_assets:
-            continue
-        signal = generate_signal(asset, asset_type, trade_type, custom_duration)
-        if signal:
-            signals.append(signal)
-    
-    # Sort by score descending and take top 'count'
+        # Optionally skip recently used (to add variety)
+        # if asset in last_assets:
+        #     continue
+        sig = analyze_asset(asset, asset_type, timeframe, trade_type)
+        if sig:
+            signals.append(sig)
+    # Sort by score descending
     signals.sort(key=lambda x: x["score"], reverse=True)
-    top_signals = signals[:count]
-    
-    # Add to last assets to avoid repeats in future
-    for signal in top_signals:
-        last_assets.append(signal["asset"])
-    
-    return top_signals
+    # Keep top n
+    top = signals[:n]
+    # Record assets used (optional)
+    for sig in top:
+        last_assets.append(sig["asset"])
+    return top
 
 # ==================== FLASK ROUTES ====================
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", timeframes=AVAILABLE_TIMEFRAMES)
 
 @app.route("/api/generate", methods=["POST"])
 def api_generate():
     data = request.get_json()
     asset_type = data.get("asset_type", "crypto")
     trade_type = data.get("trade_type", "intraday")
-    custom_duration = data.get("custom_duration")
-    
-    signals = get_top_trades(asset_type, trade_type, count=3, custom_duration=custom_duration)
-    
-    if signals:
-        return jsonify({"success": True, "signals": signals})
+    custom_timeframe = data.get("custom_timeframe", "")
+    top_trades = get_top_trades(asset_type, trade_type, custom_timeframe, n=3)
+    if top_trades:
+        return jsonify({"success": True, "signals": top_trades})
     else:
-        return jsonify({"success": False, "message": "No high-probability trades found at this moment."})
+        # Fallback: should never happen because we have many assets, but just in case
+        return jsonify({"success": False, "message": "No tradable assets at the moment."})
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=8080)
