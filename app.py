@@ -24,6 +24,7 @@ FINNHUB_KEY       = os.environ.get("FINNHUB_KEY", "")
 ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
 CMC_KEY           = os.environ.get("CMC_KEY", "")
 TWELVE_DATA_KEY   = os.environ.get("TWELVE_DATA_KEY", "")
+ITICK_KEY         = os.environ.get("ITICK_KEY", "")
 
 # ── Asset lists ──────────────────────────────────────────────────────────────
 CRYPTO_ASSETS = [
@@ -53,7 +54,7 @@ FALLBACK_PRICES = {
     "EUR/JPY":162.20,"GBP/JPY":189.00,"AUD/JPY":97.50,"EUR/CHF":0.9720,
     "GBP/CHF":1.1320,"CAD/JPY":110.10,"AUD/NZD":1.0890,"USD/MXN":17.25,
     "USD/SGD":1.3480,"EUR/AUD":1.6630,"GBP/AUD":1.9380,"EUR/CAD":1.4760
-]
+}
 
 SLUG_MAP = {
     "BTC":"bitcoin","ETH":"ethereum","BNB":"binance-coin","SOL":"solana",
@@ -131,7 +132,27 @@ def fetch_crypto_price(symbol):
             return {"price": float(data["c"]), "change24h": 0,
                     "volume24h": 0, "source": "finnhub"}
 
-    # 4. Guaranteed fallback with slight random variation
+
+    # 4. iTick
+    if ITICK_KEY:
+        data = safe_get(
+            "https://api.itick.org/crypto/quote",
+            params={"symbol": f"{symbol}USDT", "token": ITICK_KEY}
+        )
+        if data:
+            try:
+                price = data.get("price") or data.get("last") or data.get("c")
+                if price:
+                    return {
+                        "price":    float(price),
+                        "change24h": float(data.get("changePercent", 0)),
+                        "volume24h": float(data.get("volume", 0)),
+                        "source":   "itick"
+                    }
+            except (KeyError, TypeError, ValueError):
+                pass
+
+    # 5. Guaranteed fallback with slight random variation
     log.info("Using fallback price for %s", symbol)
     base = FALLBACK_PRICES.get(symbol, 1.0)
     return {
@@ -192,7 +213,27 @@ def fetch_forex_price(pair):
             except (KeyError, TypeError, ValueError):
                 pass
 
-    # 4. Guaranteed fallback
+
+    # 4. iTick (Forex)
+    if ITICK_KEY:
+        symbol_itick = f"{base_cur}{quote_cur}"
+        data = safe_get(
+            "https://api.itick.org/forex/quote",
+            params={"symbol": symbol_itick, "token": ITICK_KEY}
+        )
+        if data:
+            try:
+                price = data.get("price") or data.get("last") or data.get("c")
+                if price:
+                    return {
+                        "price":    float(price),
+                        "change24h": float(data.get("changePercent", 0)),
+                        "source":   "itick"
+                    }
+            except (KeyError, TypeError, ValueError):
+                pass
+
+    # 5. Guaranteed fallback
     log.info("Using fallback price for %s", pair)
     base = FALLBACK_PRICES.get(pair, 1.0)
     return {
