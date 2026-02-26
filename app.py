@@ -16,11 +16,11 @@ app = Flask(__name__)
 
 # ==================== CONFIGURATION ====================
 # API Keys from environment variables (set in Cloud Run)
-COINMARKETCAP_KEY = os.environ.get("COINMARKETCAP_KEY", "")
-FINNHUB_KEY = os.environ.get("FINNHUB_KEY", "")
-TWELVEDATA_KEY = os.environ.get("TWELVEDATA_KEY", "")
-ITICK_TOKEN = os.environ.get("ITICK_TOKEN", "")
-ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
+COINMARKETCAP_KEY = be14614ab52c405085fb4a3baecde8e5
+FINNHUB_KEY = d6fmhr9r01qqnmbp88egd6fmhr9r01qqnmbp88f0
+TWELVEDATA_KEY = f1039cab655b42158c1cd89cb9255729
+ITICK_TOKEN = d8ea19690f194e11b6fd2041685a734678c11cd9617d4b5b9311e7f73ce71ce5
+ALPHA_VANTAGE_KEY = RQVGONCHTJ1LWNX4.
 
 CRYPTO_ASSETS = [
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT",
