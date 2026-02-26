@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import random
+import traceback
 from datetime import datetime, timedelta
 from collections import deque
 
@@ -10,12 +11,10 @@ import pandas as pd
 import numpy as np
 from flask import Flask, render_template, request, jsonify
 from ta import add_all_ta_features
-from ta.volatility import AverageTrueRange
 
 app = Flask(__name__)
 
 # ==================== CONFIGURATION ====================
-# API Keys are read from environment variables (set in Cloud Run)
 COINMARKETCAP_KEY = os.environ.get("COINMARKETCAP_KEY", "")
 FINNHUB_KEY = os.environ.get("FINNHUB_KEY", "")
 TWELVEDATA_KEY = os.environ.get("TWELVEDATA_KEY", "")
@@ -46,12 +45,15 @@ cache_lock = threading.Lock()
 CACHE_DURATION = 60
 last_assets = deque(maxlen=15)
 
+# Rate limiter for CoinGecko (free tier: ~30 calls/minute)
+coingecko_last_call = 0
+coingecko_lock = threading.Lock()
+COINGECKO_MIN_INTERVAL = 2  # seconds between calls
+
 # ==================== CRYPTO API FUNCTIONS ====================
 def fetch_coinmarketcap(symbol, interval, limit=100):
-    """Fetch OHLC from CoinMarketCap (requires API key)."""
     if not COINMARKETCAP_KEY:
         return None
-    # Simplified mapping – in production use /v1/cryptocurrency/map
     mapping = {
         "BTCUSDT": "1", "ETHUSDT": "1027", "BNBUSDT": "1839", "SOLUSDT": "5426",
         "XRPUSDT": "52", "ADAUSDT": "2010", "DOGEUSDT": "74", "DOTUSDT": "6636",
@@ -64,7 +66,6 @@ def fetch_coinmarketcap(symbol, interval, limit=100):
     coin_id = mapping.get(symbol)
     if not coin_id:
         return None
-    # Map interval to CMC interval format
     interval_map = {"15m": "5m", "1h": "hourly", "4h": "hourly", "1d": "daily", "1w": "daily"}
     cmc_interval = interval_map.get(interval, "hourly")
     url = "https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/historical"
@@ -94,11 +95,10 @@ def fetch_coinmarketcap(symbol, interval, limit=100):
         df.set_index("timestamp", inplace=True)
         return df
     except Exception as e:
-        print(f"CMC error: {e}")
+        print(f"CMC error for {symbol}: {e}")
         return None
 
 def fetch_finnhub_crypto(symbol, interval, limit=100):
-    """Finnhub crypto – requires API key."""
     if not FINNHUB_KEY:
         return None
     finnhub_symbol = f"BINANCE:{symbol}"
@@ -128,11 +128,12 @@ def fetch_finnhub_crypto(symbol, interval, limit=100):
         df.set_index("timestamp", inplace=True)
         return df
     except Exception as e:
-        print(f"Finnhub error: {e}")
+        print(f"Finnhub error for {symbol}: {e}")
         return None
 
 def fetch_coingecko(symbol, interval, limit=100):
-    """CoinGecko – no key required, but rate limited."""
+    """CoinGecko with rate limiting."""
+    global coingecko_last_call
     mapping = {
         "BTCUSDT": "bitcoin", "ETHUSDT": "ethereum", "BNBUSDT": "binancecoin",
         "SOLUSDT": "solana", "XRPUSDT": "ripple", "ADAUSDT": "cardano",
@@ -151,27 +152,33 @@ def fetch_coingecko(symbol, interval, limit=100):
     days = days_map.get(interval, 7)
     url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc"
     params = {"vs_currency": "usd", "days": days}
+
+    # Rate limiting
+    with coingecko_lock:
+        now = time.time()
+        if now - coingecko_last_call < COINGECKO_MIN_INTERVAL:
+            time.sleep(COINGECKO_MIN_INTERVAL - (now - coingecko_last_call))
+        coingecko_last_call = time.time()
+
     try:
         resp = requests.get(url, params=params, timeout=10)
         resp.raise_for_status()
-        data = resp.json()  # list of [timestamp, open, high, low, close]
+        data = resp.json()
         df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)
-        df['volume'] = 1e6  # dummy volume (CoinGecko doesn't provide volume in OHLC)
+        df['volume'] = 1e6  # dummy volume
         return df
     except Exception as e:
-        print(f"CoinGecko error: {e}")
+        print(f"CoinGecko error for {symbol}: {e}")
         return None
 
 # ==================== FOREX API FUNCTIONS ====================
 def fetch_twelvedata(symbol, interval, limit=100):
-    """TwelveData – requires API key."""
     if not TWELVEDATA_KEY:
         return None
     interval_map = {"15m": "15min", "1h": "1h", "4h": "4h", "1d": "1day", "1w": "1week"}
     td_interval = interval_map.get(interval, "1h")
-    # TwelveData expects format like "EUR/USD"
     pair = symbol[:3] + "/" + symbol[3:]
     url = "https://api.twelvedata.com/time_series"
     params = {
@@ -201,11 +208,10 @@ def fetch_twelvedata(symbol, interval, limit=100):
         df = df.sort_index()
         return df
     except Exception as e:
-        print(f"TwelveData error: {e}")
+        print(f"TwelveData error for {symbol}: {e}")
         return None
 
 def fetch_itick(symbol, interval, limit=100):
-    """iTick – requires token."""
     if not ITICK_TOKEN:
         return None
     ktype_map = {"15m": 3, "1h": 5, "4h": 6, "1d": 7, "1w": 8}
@@ -239,11 +245,10 @@ def fetch_itick(symbol, interval, limit=100):
         df.set_index("timestamp", inplace=True)
         return df
     except Exception as e:
-        print(f"iTick error: {e}")
+        print(f"iTick error for {symbol}: {e}")
         return None
 
 def fetch_alphavantage_forex(symbol, interval, limit=100):
-    """Alpha Vantage – requires API key."""
     if not ALPHA_VANTAGE_KEY:
         return None
     interval_map = {"15m": "15min", "1h": "60min", "4h": "60min", "1d": "DAILY", "1w": "WEEKLY"}
@@ -286,11 +291,10 @@ def fetch_alphavantage_forex(symbol, interval, limit=100):
         df = df.sort_index()
         return df.iloc[-limit:]
     except Exception as e:
-        print(f"Alpha Vantage error: {e}")
+        print(f"Alpha Vantage error for {symbol}: {e}")
         return None
 
 def fetch_exchangerate_forex(symbol, interval, limit=100):
-    """Fallback: exchangerate.host (daily only)."""
     try:
         days_map = {"15m": 2, "1h": 7, "4h": 30, "1d": 90, "1w": 365}
         days = days_map.get(interval, 7)
@@ -317,14 +321,13 @@ def fetch_exchangerate_forex(symbol, interval, limit=100):
             "close": prices
         })
         df.set_index("timestamp", inplace=True)
-        # Approximate OHLC from daily close
         df["open"] = df["close"].shift(1).fillna(df["close"])
-        df["high"] = df[["open", "close"]].max(axis=1) * (1 + 0.001)  # small wiggle
+        df["high"] = df[["open", "close"]].max(axis=1) * (1 + 0.001)
         df["low"] = df[["open", "close"]].min(axis=1) * (1 - 0.001)
         df["volume"] = 1e6
         return df
     except Exception as e:
-        print(f"Exchangerate error: {e}")
+        print(f"Exchangerate error for {symbol}: {e}")
         return None
 
 # ==================== MASTER FETCHER WITH FALLBACKS ====================
@@ -342,7 +345,7 @@ def get_ohlc(asset, asset_type, timeframe):
         if df is None and FINNHUB_KEY:
             df = fetch_finnhub_crypto(asset, timeframe)
         if df is None:
-            df = fetch_coingecko(asset, timeframe)  # no key needed
+            df = fetch_coingecko(asset, timeframe)  # rate-limited
     else:
         if TWELVEDATA_KEY:
             df = fetch_twelvedata(asset, timeframe)
@@ -351,7 +354,7 @@ def get_ohlc(asset, asset_type, timeframe):
         if df is None and ALPHA_VANTAGE_KEY:
             df = fetch_alphavantage_forex(asset, timeframe)
         if df is None:
-            df = fetch_exchangerate_forex(asset, timeframe)  # no key needed
+            df = fetch_exchangerate_forex(asset, timeframe)
 
     if df is not None and not df.empty:
         with cache_lock:
@@ -507,8 +510,10 @@ def generate_signal(asset, asset_type, trade_type, custom_timeframe=None):
 
 def get_top_trades(asset_type, trade_type, count=3, custom_timeframe=None):
     assets = CRYPTO_ASSETS if asset_type == "crypto" else FOREX_ASSETS
+    # Limit scan to first 15 assets to avoid rate limits
+    scan_assets = assets[:15]
     signals = []
-    for asset in assets:
+    for asset in scan_assets:
         if asset in last_assets:
             continue
         signal = generate_signal(asset, asset_type, trade_type, custom_timeframe)
@@ -527,19 +532,21 @@ def index():
 
 @app.route("/api/generate", methods=["POST"])
 def api_generate():
-    data = request.get_json()
-    asset_type = data.get("asset_type", "crypto")
-    trade_type = data.get("trade_type", "intraday")
-    custom_timeframe = data.get("custom_timeframe")
-    if custom_timeframe == "" or custom_timeframe is None:
-        custom_timeframe = None
-    top_trades = get_top_trades(asset_type, trade_type, count=3, custom_timeframe=custom_timeframe)
-    if top_trades:
+    try:
+        data = request.get_json()
+        asset_type = data.get("asset_type", "crypto")
+        trade_type = data.get("trade_type", "intraday")
+        custom_timeframe = data.get("custom_timeframe")
+        if custom_timeframe == "" or custom_timeframe is None:
+            custom_timeframe = None
+        top_trades = get_top_trades(asset_type, trade_type, count=3, custom_timeframe=custom_timeframe)
         return jsonify({"success": True, "signals": top_trades})
-    else:
-        return jsonify({"success": True, "signals": [], "message": "No trades met criteria. Try adjusting settings."})
+    except Exception as e:
+        # Log full traceback to Cloud Logging
+        print("ERROR in /api/generate:")
+        traceback.print_exc()
+        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
 
-# Health check endpoint (optional)
 @app.route("/health")
 def health():
     return "OK", 200
