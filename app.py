@@ -4,7 +4,6 @@ import threading
 import random
 from datetime import datetime, timedelta
 from collections import deque
-from functools import lru_cache
 
 import requests
 import pandas as pd
@@ -16,6 +15,13 @@ from ta.volatility import AverageTrueRange
 app = Flask(__name__)
 
 # ==================== CONFIGURATION ====================
+# API Keys from environment variables (set in Cloud Run)
+COINMARKETCAP_KEY = os.environ.get("COINMARKETCAP_KEY", "")
+FINNHUB_KEY = os.environ.get("FINNHUB_KEY", "")
+TWELVEDATA_KEY = os.environ.get("TWELVEDATA_KEY", "")
+ITICK_TOKEN = os.environ.get("ITICK_TOKEN", "")
+ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
+
 CRYPTO_ASSETS = [
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT",
     "DOTUSDT", "MATICUSDT", "SHIBUSDT", "TRXUSDT", "AVAXUSDT", "UNIUSDT", "ATOMUSDT",
@@ -28,90 +34,91 @@ FOREX_ASSETS = [
     "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "EURAUD", "GBPCHF", "USDNOK", "USDSEK"
 ]
 
-# Default timeframes for trade types
 TRADE_TIMEFRAMES = {
     "scalp": "15m",
     "intraday": "1h",
     "swing": "4h",
-    "custom": "1h"  # placeholder, will be overridden
+    "custom": "1h"
 }
 
-# Cache for OHLC data
 data_cache = {}
 cache_lock = threading.Lock()
-CACHE_DURATION = 60  # seconds
+CACHE_DURATION = 60
+last_assets = deque(maxlen=15)
 
-# Keep track of last recommended assets to avoid repeats (now for top 3)
-last_assets = deque(maxlen=10)
-
-# ==================== API FUNCTIONS ====================
-# Crypto APIs
-def fetch_binance_klines(symbol, interval, limit=100):
-    url = "https://api.binance.com/api/v3/klines"
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
+# ==================== API FETCH FUNCTIONS ====================
+# -------------------- CRYPTO --------------------
+def fetch_coinmarketcap(symbol, interval, limit=100):
+    """Fetch OHLC from CoinMarketCap (requires API key)."""
+    if not COINMARKETCAP_KEY:
+        return None
+    # Map symbol to CMC ID (simplified – in production use /v1/cryptocurrency/map)
+    mapping = {
+        "BTCUSDT": "1", "ETHUSDT": "1027", "BNBUSDT": "1839", "SOLUSDT": "5426",
+        "XRPUSDT": "52", "ADAUSDT": "2010", "DOGEUSDT": "74", "DOTUSDT": "6636",
+        "MATICUSDT": "3890", "SHIBUSDT": "5994", "TRXUSDT": "1958", "AVAXUSDT": "5805",
+        "UNIUSDT": "7083", "ATOMUSDT": "3794", "LTCUSDT": "2", "BCHUSDT": "1831",
+        "NEARUSDT": "6535", "FILUSDT": "2280", "APTUSDT": "21794", "TONUSDT": "11419",
+        "LINKUSDT": "1975", "XLMUSDT": "512", "ALGOUSDT": "4030", "VETUSDT": "3077",
+        "ICPUSDT": "8916"
+    }
+    coin_id = mapping.get(symbol)
+    if not coin_id:
+        return None
+    url = "https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/historical"
+    params = {
+        "id": coin_id,
+        "convert": "USD",
+        "count": limit,
+        "interval": "5m" if "15m" in interval else "hourly" if "1h" in interval else "daily"
+    }
+    headers = {"X-CMC_PRO_API_KEY": COINMARKETCAP_KEY}
     try:
-        resp = requests.get(url, params=params, timeout=10)
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        df = pd.DataFrame(data, columns=[
-            'timestamp', 'open', 'high', 'low', 'close', 'volume',
-            'close_time', 'quote_asset_volume', 'number_of_trades',
-            'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
-        ])
-        df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df.set_index('timestamp', inplace=True)
-        df = df.astype(float)
+        quotes = data["data"]["quotes"]
+        records = []
+        for q in quotes:
+            records.append({
+                "timestamp": pd.to_datetime(q["timestamp"]),
+                "open": q["quote"]["USD"]["open"],
+                "high": q["quote"]["USD"]["high"],
+                "low": q["quote"]["USD"]["low"],
+                "close": q["quote"]["USD"]["close"],
+                "volume": q["quote"]["USD"]["volume"]
+            })
+        df = pd.DataFrame(records)
+        df.set_index("timestamp", inplace=True)
         return df
     except Exception as e:
-        print(f"Binance error: {e}")
+        print(f"CMC error: {e}")
         return None
 
-def fetch_coingecko_ohlc(symbol, interval, limit=100):
-    # CoinGecko does not have USDT pairs directly; we map symbol to CoinGecko ID.
-    # For simplicity, we'll map BTCUSDT -> bitcoin, ETHUSDT -> ethereum, etc.
-    # This is a simplified mapping; in production, you'd need a proper mapping.
-    # We'll use a rough approximation.
+def fetch_coingecko(symbol, interval, limit=100):
+    """CoinGecko – no key required."""
     mapping = {
-        "BTCUSDT": "bitcoin",
-        "ETHUSDT": "ethereum",
-        "BNBUSDT": "binancecoin",
-        "SOLUSDT": "solana",
-        "XRPUSDT": "ripple",
-        "ADAUSDT": "cardano",
-        "DOGEUSDT": "dogecoin",
-        "DOTUSDT": "polkadot",
-        "MATICUSDT": "matic-network",
-        "SHIBUSDT": "shiba-inu",
-        "TRXUSDT": "tron",
-        "AVAXUSDT": "avalanche-2",
-        "UNIUSDT": "uniswap",
-        "ATOMUSDT": "cosmos",
-        "LTCUSDT": "litecoin",
-        "BCHUSDT": "bitcoin-cash",
-        "NEARUSDT": "near",
-        "FILUSDT": "filecoin",
-        "APTUSDT": "aptos",
-        "TONUSDT": "the-open-network",
-        "LINKUSDT": "chainlink",
-        "XLMUSDT": "stellar",
-        "ALGOUSDT": "algorand",
-        "VETUSDT": "vechain",
+        "BTCUSDT": "bitcoin", "ETHUSDT": "ethereum", "BNBUSDT": "binancecoin",
+        "SOLUSDT": "solana", "XRPUSDT": "ripple", "ADAUSDT": "cardano",
+        "DOGEUSDT": "dogecoin", "DOTUSDT": "polkadot", "MATICUSDT": "matic-network",
+        "SHIBUSDT": "shiba-inu", "TRXUSDT": "tron", "AVAXUSDT": "avalanche-2",
+        "UNIUSDT": "uniswap", "ATOMUSDT": "cosmos", "LTCUSDT": "litecoin",
+        "BCHUSDT": "bitcoin-cash", "NEARUSDT": "near", "FILUSDT": "filecoin",
+        "APTUSDT": "aptos", "TONUSDT": "the-open-network", "LINKUSDT": "chainlink",
+        "XLMUSDT": "stellar", "ALGOUSDT": "algorand", "VETUSDT": "vechain",
         "ICPUSDT": "internet-computer"
     }
     coin_id = mapping.get(symbol)
     if not coin_id:
         return None
-    # Map interval to days (CoinGecko ohlc endpoint uses days)
-    days_map = {"1m": 1, "5m": 1, "15m": 2, "30m": 2, "1h": 7, "4h": 30, "1d": 90, "1w": 365}
+    days_map = {"15m": 2, "1h": 7, "4h": 30, "1d": 90, "1w": 365}
     days = days_map.get(interval, 7)
     url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc"
     params = {"vs_currency": "usd", "days": days}
     try:
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(url, params=params, timeout=10)
         resp.raise_for_status()
-        data = resp.json()
-        # data is list of [timestamp, open, high, low, close]
+        data = resp.json()  # list of [timestamp, open, high, low, close]
         df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)
@@ -121,15 +128,124 @@ def fetch_coingecko_ohlc(symbol, interval, limit=100):
         print(f"CoinGecko error: {e}")
         return None
 
-# Forex APIs
-def fetch_alphavantage_forex(symbol, interval, limit=100):
-    # Alpha Vantage requires API key; using public demo key (rate limited)
-    api_key = "demo"  # free demo key; replace with your own if needed
-    # Map interval to Alpha Vantage interval
-    interval_map = {
-        "1m": "1min", "5m": "5min", "15m": "15min", "30m": "30min",
-        "1h": "60min", "4h": "60min", "1d": "daily", "1w": "weekly"
+def fetch_finnhub_crypto(symbol, interval, limit=100):
+    """Finnhub – requires API key."""
+    if not FINNHUB_KEY:
+        return None
+    # Finnhub uses different symbol format (e.g., BINANCE:BTCUSDT)
+    finnhub_symbol = f"BINANCE:{symbol}"
+    resolution_map = {"15m": "15", "1h": "60", "4h": "240", "1d": "D", "1w": "W"}
+    res = resolution_map.get(interval, "60")
+    url = "https://finnhub.io/api/v1/crypto/candle"
+    params = {
+        "symbol": finnhub_symbol,
+        "resolution": res,
+        "count": limit,
+        "token": FINNHUB_KEY
     }
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("s") != "ok":
+            return None
+        df = pd.DataFrame({
+            "timestamp": pd.to_datetime(data["t"], unit="s"),
+            "open": data["o"],
+            "high": data["h"],
+            "low": data["l"],
+            "close": data["c"],
+            "volume": data["v"]
+        })
+        df.set_index("timestamp", inplace=True)
+        return df
+    except Exception as e:
+        print(f"Finnhub error: {e}")
+        return None
+
+# -------------------- FOREX --------------------
+def fetch_twelvedata(symbol, interval, limit=100):
+    """TwelveData – requires API key."""
+    if not TWELVEDATA_KEY:
+        return None
+    interval_map = {"15m": "15min", "1h": "1h", "4h": "4h", "1d": "1day", "1w": "1week"}
+    td_interval = interval_map.get(interval, "1h")
+    url = "https://api.twelvedata.com/time_series"
+    params = {
+        "symbol": symbol.replace("USD", "/USD"),  # TwelveData expects EUR/USD format
+        "interval": td_interval,
+        "outputsize": limit,
+        "apikey": TWELVEDATA_KEY
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if "values" not in data:
+            return None
+        records = []
+        for item in data["values"]:
+            records.append({
+                "timestamp": pd.to_datetime(item["datetime"]),
+                "open": float(item["open"]),
+                "high": float(item["high"]),
+                "low": float(item["low"]),
+                "close": float(item["close"]),
+                "volume": 0
+            })
+        df = pd.DataFrame(records)
+        df.set_index("timestamp", inplace=True)
+        df = df.sort_index()
+        return df
+    except Exception as e:
+        print(f"TwelveData error: {e}")
+        return None
+
+def fetch_itick(symbol, interval, limit=100):
+    """iTick – requires token."""
+    if not ITICK_TOKEN:
+        return None
+    # Map interval to iTick kType: 1=1min, 2=5min, 3=15min, 4=30min, 5=1h, 6=4h, 7=1d, 8=1w
+    ktype_map = {"15m": 3, "1h": 5, "4h": 6, "1d": 7, "1w": 8}
+    ktype = ktype_map.get(interval, 5)
+    url = "https://api.itick.org/forex/kline"
+    params = {
+        "region": "GB",
+        "code": symbol,
+        "kType": ktype,
+        "limit": limit
+    }
+    headers = {"token": ITICK_TOKEN}
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            return None
+        klines = data["data"]
+        records = []
+        for k in klines:
+            records.append({
+                "timestamp": pd.to_datetime(k["t"], unit="ms"),
+                "open": k["o"],
+                "high": k["h"],
+                "low": k["l"],
+                "close": k["c"],
+                "volume": k.get("v", 0)
+            })
+        df = pd.DataFrame(records)
+        df.set_index("timestamp", inplace=True)
+        return df
+    except Exception as e:
+        print(f"iTick error: {e}")
+        return None
+
+def fetch_alphavantage_forex(symbol, interval, limit=100):
+    """Alpha Vantage – requires API key."""
+    if not ALPHA_VANTAGE_KEY:
+        return None
+    # Map interval
+    interval_map = {"15m": "15min", "1h": "60min", "4h": "60min", "1d": "DAILY", "1w": "WEEKLY"}
     av_interval = interval_map.get(interval, "60min")
     function = "FX_INTRADAY" if "min" in av_interval else "FX_DAILY"
     url = "https://www.alphavantage.co/query"
@@ -138,48 +254,45 @@ def fetch_alphavantage_forex(symbol, interval, limit=100):
         "from_symbol": symbol[:3],
         "to_symbol": symbol[3:],
         "interval": av_interval if "min" in av_interval else None,
-        "apikey": api_key,
+        "apikey": ALPHA_VANTAGE_KEY,
         "outputsize": "compact"
     }
-    # Remove None params
     params = {k: v for k, v in params.items() if v is not None}
     try:
         resp = requests.get(url, params=params, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        # Parse response
-        if "Time Series FX" in data:
-            ts_key = "Time Series FX (1min)"  # adjust based on interval
-            # find the correct key
-            for key in data:
-                if "Time Series FX" in key:
-                    ts_key = key
-                    break
-            time_series = data[ts_key]
-            records = []
-            for dt_str, values in time_series.items():
-                records.append({
-                    'timestamp': pd.to_datetime(dt_str),
-                    'open': float(values['1. open']),
-                    'high': float(values['2. high']),
-                    'low': float(values['3. low']),
-                    'close': float(values['4. close']),
-                    'volume': 0
-                })
-            df = pd.DataFrame(records)
-            df.set_index('timestamp', inplace=True)
-            df = df.sort_index()
-            return df.iloc[-limit:]  # limit
-        else:
+        # Find time series key
+        ts_key = None
+        for key in data:
+            if "Time Series FX" in key:
+                ts_key = key
+                break
+        if not ts_key:
             return None
+        time_series = data[ts_key]
+        records = []
+        for dt_str, values in time_series.items():
+            records.append({
+                "timestamp": pd.to_datetime(dt_str),
+                "open": float(values["1. open"]),
+                "high": float(values["2. high"]),
+                "low": float(values["3. low"]),
+                "close": float(values["4. close"]),
+                "volume": 0
+            })
+        df = pd.DataFrame(records)
+        df.set_index("timestamp", inplace=True)
+        df = df.sort_index()
+        return df.iloc[-limit:]
     except Exception as e:
         print(f"Alpha Vantage error: {e}")
         return None
 
 def fetch_exchangerate_forex(symbol, interval, limit=100):
-    # exchangerate.host provides daily only; we'll simulate intraday
+    """Fallback: exchangerate.host (daily only)."""
     try:
-        days_map = {"1m": 1, "5m": 1, "15m": 2, "30m": 2, "1h": 7, "4h": 30, "1d": 90, "1w": 365}
+        days_map = {"15m": 2, "1h": 7, "4h": 30, "1d": 90, "1w": 365}
         days = days_map.get(interval, 7)
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -204,7 +317,6 @@ def fetch_exchangerate_forex(symbol, interval, limit=100):
             "close": prices
         })
         df.set_index("timestamp", inplace=True)
-        # Simulate OHLC from close (for demo)
         df["open"] = df["close"].shift(1).fillna(df["close"])
         df["high"] = df[["open", "close"]].max(axis=1) * (1 + np.random.uniform(0, 0.002))
         df["low"] = df[["open", "close"]].min(axis=1) * (1 - np.random.uniform(0, 0.002))
@@ -214,7 +326,7 @@ def fetch_exchangerate_forex(symbol, interval, limit=100):
         print(f"Exchangerate error: {e}")
         return None
 
-# Main data fetch with fallbacks
+# -------------------- MASTER FETCHER WITH FALLBACKS --------------------
 def get_ohlc(asset, asset_type, timeframe):
     cache_key = f"{asset}_{timeframe}"
     now = time.time()
@@ -224,13 +336,21 @@ def get_ohlc(asset, asset_type, timeframe):
 
     df = None
     if asset_type == "crypto":
-        # Try Binance first, then CoinGecko
-        df = fetch_binance_klines(asset, timeframe)
+        # Chain: CoinMarketCap -> Finnhub -> CoinGecko
+        if COINMARKETCAP_KEY:
+            df = fetch_coinmarketcap(asset, timeframe)
+        if df is None and FINNHUB_KEY:
+            df = fetch_finnhub_crypto(asset, timeframe)
         if df is None:
-            df = fetch_coingecko_ohlc(asset, timeframe)
+            df = fetch_coingecko(asset, timeframe)  # no key needed
     else:
-        # Try Alpha Vantage first, then exchangerate.host
-        df = fetch_alphavantage_forex(asset, timeframe)
+        # Chain: TwelveData -> iTick -> Alpha Vantage -> exchangerate.host
+        if TWELVEDATA_KEY:
+            df = fetch_twelvedata(asset, timeframe)
+        if df is None and ITICK_TOKEN:
+            df = fetch_itick(asset, timeframe)
+        if df is None and ALPHA_VANTAGE_KEY:
+            df = fetch_alphavantage_forex(asset, timeframe)
         if df is None:
             df = fetch_exchangerate_forex(asset, timeframe)
 
@@ -267,29 +387,14 @@ def calculate_dynamic_leverage(volatility_percent, asset_type):
     else:
         return int(base_max * 0.2)
 
-def calculate_duration(asset_type, trade_type, atr, price):
-    # Simple duration based on trade type
-    if trade_type == "scalp":
-        return "2h"
-    elif trade_type == "intraday":
-        return "24h"
-    elif trade_type == "swing":
-        return "7d"
-    else:  # custom
-        return "1h"  # placeholder; actual custom duration is determined by selected timeframe
-
 def generate_signal(asset, asset_type, trade_type, custom_timeframe=None):
-    """
-    Generate a signal for a single asset.
-    Returns a dict with signal details or None if no valid signal.
-    """
     if custom_timeframe:
         timeframe = custom_timeframe
     else:
         timeframe = TRADE_TIMEFRAMES.get(trade_type, "1h")
 
     df = get_ohlc(asset, asset_type, timeframe)
-    if df is None or len(df) < 50:
+    if df is None or len(df) < 30:
         return None
 
     df = calculate_indicators(df)
@@ -302,7 +407,6 @@ def generate_signal(asset, asset_type, trade_type, custom_timeframe=None):
 
     swing_high, swing_low = find_swing_points(df)
 
-    # Trend and indicators
     ema21 = last.get("trend_ema_fast", last.get("EMA_21", price))
     ema50 = last.get("EMA_50", price)
     macd = last.get("MACD_macd", 0)
@@ -311,7 +415,7 @@ def generate_signal(asset, asset_type, trade_type, custom_timeframe=None):
     bb_high = last.get("volatility_bbh", price * 1.02)
     bb_low = last.get("volatility_bbl", price * 0.98)
 
-    # Trend direction
+    # Trend
     if price > ema21 and ema21 > ema50:
         trend = "bullish"
     elif price < ema21 and ema21 < ema50:
@@ -319,16 +423,16 @@ def generate_signal(asset, asset_type, trade_type, custom_timeframe=None):
     else:
         trend = "neutral"
 
-    # Confluence score (0-4)
+    # Confluence score (0-6 now with more factors)
     confluence = 0
     reasons = []
 
     if trend == "bullish":
         confluence += 1
-        reasons.append("Price above EMA21/50")
+        reasons.append("EMA bullish alignment")
     elif trend == "bearish":
         confluence += 1
-        reasons.append("Price below EMA21/50")
+        reasons.append("EMA bearish alignment")
 
     if price <= bb_low and last["close"] > bb_low:
         confluence += 1
@@ -344,19 +448,29 @@ def generate_signal(asset, asset_type, trade_type, custom_timeframe=None):
         confluence += 1
         reasons.append("MACD bearish cross")
 
-    if rsi < 30 and last["close"] > prev["close"]:
+    if rsi < 30:
         confluence += 1
-        reasons.append("RSI oversold + price up")
-    elif rsi > 70 and last["close"] < prev["close"]:
+        reasons.append("RSI oversold")
+    elif rsi > 70:
         confluence += 1
-        reasons.append("RSI overbought + price down")
+        reasons.append("RSI overbought")
 
-    if confluence < 2:  # lower threshold to ensure more signals; 2+ is acceptable
-        return None
+    # Additional: price vs previous close (momentum)
+    if last["close"] > prev["close"]:
+        confluence += 1
+        reasons.append("Price up")
+    elif last["close"] < prev["close"]:
+        confluence += 1
+        reasons.append("Price down")
 
-    # Determine direction
-    bullish_count = sum(1 for r in reasons if "bull" in r.lower())
-    bearish_count = sum(1 for r in reasons if "bear" in r.lower())
+    # Volume confirmation
+    if last["volume"] > df["volume"].rolling(20).mean().iloc[-1]:
+        confluence += 1
+        reasons.append("Volume above average")
+
+    # Determine direction based on confluence reasons
+    bullish_count = sum(1 for r in reasons if "bull" in r.lower() or "up" in r.lower() or "oversold" in r.lower())
+    bearish_count = sum(1 for r in reasons if "bear" in r.lower() or "down" in r.lower() or "overbought" in r.lower())
     if bullish_count > bearish_count:
         direction = "LONG"
     elif bearish_count > bullish_count:
@@ -379,10 +493,10 @@ def generate_signal(asset, asset_type, trade_type, custom_timeframe=None):
 
     volatility_pct = (atr / price) * 100
     leverage = calculate_dynamic_leverage(volatility_pct, asset_type)
-    duration = calculate_duration(asset_type, trade_type, atr, price)
+    duration = f"{timeframe}"  # simplified
 
-    # Score for ranking (confluence * 10 + random tiny to break ties)
-    score = confluence * 10 + random.random()
+    # Score: confluence + random tie-breaker
+    score = confluence + random.random()
 
     signal = {
         "asset": asset,
@@ -393,14 +507,13 @@ def generate_signal(asset, asset_type, trade_type, custom_timeframe=None):
         "leverage": leverage,
         "duration": duration,
         "timeframe": timeframe,
-        "confidence": "High" if confluence >= 3 else "Medium" if confluence == 2 else "Low",
-        "rationale": " | ".join(reasons[:2]),  # show top 2 reasons
+        "confidence": "High" if confluence >= 4 else "Medium" if confluence >= 2 else "Low",
+        "rationale": " | ".join(reasons[:3]),
         "score": score
     }
     return signal
 
 def get_top_trades(asset_type, trade_type, count=3, custom_timeframe=None):
-    """Return top N distinct signals for the given asset type."""
     assets = CRYPTO_ASSETS if asset_type == "crypto" else FOREX_ASSETS
     signals = []
     for asset in assets:
@@ -409,10 +522,8 @@ def get_top_trades(asset_type, trade_type, count=3, custom_timeframe=None):
         signal = generate_signal(asset, asset_type, trade_type, custom_timeframe)
         if signal:
             signals.append(signal)
-    # Sort by score descending
     signals.sort(key=lambda x: x["score"], reverse=True)
     top_signals = signals[:count]
-    # Add selected assets to last_assets to avoid repeats next time
     for s in top_signals:
         last_assets.append(s["asset"])
     return top_signals
@@ -427,15 +538,14 @@ def api_generate():
     data = request.get_json()
     asset_type = data.get("asset_type", "crypto")
     trade_type = data.get("trade_type", "intraday")
-    custom_timeframe = data.get("custom_timeframe")  # e.g., "1h", "4h", etc.
+    custom_timeframe = data.get("custom_timeframe")
     if custom_timeframe == "" or custom_timeframe is None:
         custom_timeframe = None
     top_trades = get_top_trades(asset_type, trade_type, count=3, custom_timeframe=custom_timeframe)
     if top_trades:
         return jsonify({"success": True, "signals": top_trades})
     else:
-        # In case no trades found (should rarely happen), return an empty list with a message
-        return jsonify({"success": True, "signals": [], "message": "No trades met the criteria. Try adjusting settings."})
+        return jsonify({"success": True, "signals": [], "message": "No trades met criteria. Try adjusting settings."})
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=8080)
