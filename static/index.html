@@ -703,15 +703,22 @@ function buildCard(t){
       </div>
     </div>
 
+    <!-- Close time banner -->
+    <div style="background:rgba(0,229,160,0.07);border:1px solid rgba(0,229,160,0.25);border-radius:11px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="font-size:.72rem;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:1px">🎯 Target Close Time</div>
+      <div style="font-family:'Space Mono',monospace;font-size:.95rem;color:var(--accent);font-weight:700">${t.close_time||'—'}</div>
+      <div style="font-size:.7rem;color:var(--muted)">TP calibrated to hit within ${t.duration}</div>
+    </div>
+
     <div class="metrics">
       <div class="metric"><div class="m-lbl">Entry Price</div><div class="m-val pri">${fmt(t.entry,t.market)}</div><div class="m-sub">Live market price</div></div>
-      <div class="metric"><div class="m-lbl">Take Profit</div><div class="m-val buy">${fmt(t.tp,t.market)}</div><div class="m-sub">+${t.tp_pct}%</div></div>
-      <div class="metric"><div class="m-lbl">Stop Loss</div><div class="m-val sell">${fmt(t.sl,t.market)}</div><div class="m-sub">−${t.sl_pct}% ATR buffered</div></div>
-      <div class="metric"><div class="m-lbl">Leverage</div><div class="m-val pri">${t.leverage}x</div><div class="m-sub">Dynamic</div></div>
-      <div class="metric"><div class="m-lbl">Risk:Reward</div><div class="m-val ${t.rr>=2?'buy':'pri'}">1:${t.rr}</div><div class="m-sub">Min 1:1.8</div></div>
-      <div class="metric"><div class="m-lbl">Duration</div><div class="m-val pri">${t.duration}</div><div class="m-sub">Auto-close target</div></div>
-      <div class="metric"><div class="m-lbl">Volatility</div><div class="m-val" style="color:${volC}">${t.volatility?.level||'—'}</div><div class="m-sub">${t.volatility?.speed||''} mkt</div></div>
-      <div class="metric"><div class="m-lbl">24h Change</div><div class="m-val ${t.change24h>=0?'buy':'sell'}">${t.change24h>=0?'+':''}${t.change24h}%</div><div class="m-sub">Price momentum</div></div>
+      <div class="metric"><div class="m-lbl">Take Profit</div><div class="m-val buy">${fmt(t.tp,t.market)}</div><div class="m-sub">+${t.tp_pct}% target</div></div>
+      <div class="metric"><div class="m-lbl">Stop Loss</div><div class="m-val sell">${fmt(t.sl,t.market)}</div><div class="m-sub">−${t.sl_pct}% ATR buffer</div></div>
+      <div class="metric"><div class="m-lbl">Leverage</div><div class="m-val pri">${t.leverage}x</div><div class="m-sub">Volatility-adjusted</div></div>
+      <div class="metric"><div class="m-lbl">Risk:Reward</div><div class="m-val ${t.rr>=2?'buy':'pri'}">1:${t.rr}</div><div class="m-sub">Min 1:1.5</div></div>
+      <div class="metric"><div class="m-lbl">Duration</div><div class="m-val pri">${t.duration}</div><div class="m-sub">TP designed to hit</div></div>
+      <div class="metric"><div class="m-lbl">Volatility</div><div class="m-val" style="color:${volC}">${t.volatility?.level||'—'}</div><div class="m-sub">${t.volatility?.speed||''} market</div></div>
+      <div class="metric"><div class="m-lbl">Direction Score</div><div class="m-val ${t.direction_score>=65?'buy':'pri'}">${t.direction_score||'—'}%</div><div class="m-sub">Signal conviction</div></div>
     </div>
 
     <div class="conf-wrap">
