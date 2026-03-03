@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trading Bot - Premium Signals</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="light-mode">
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <h1>⚡ QUANTUM TRADER</h1>
+                <span>Advanced Signal Engine</span>
+            </div>
+            <div class="theme-toggle">
+                <button id="themeBtn">🌙 Dark</button>
+            </div>
+        </header>
+
+        <!-- Main Controls -->
+        <div class="controls glass">
+            <div class="asset-selector">
+                <button class="active" data-type="crypto">Crypto (25)</button>
+                <button data-type="forex">Forex (15)</button>
+            </div>
+            <div class="duration-selector">
+                <label>Duration:</label>
+                <select id="durationPreset">
+                    <option value="15">Scalp (15 min)</option>
+                    <option value="60" selected>Intraday (1h)</option>
+                    <option value="240">Swing (4h)</option>
+                    <option value="custom">Custom</option>
+                </select>
+                <input type="number" id="customDuration" placeholder="Minutes" min="1" value="90" style="display:none;">
+            </div>
+            <button id="generateBtn" class="premium-btn">🎯 Generate Top 3 Trades</button>
+        </div>
+
+        <!-- Top 3 Trades Cards -->
+        <div id="tradesContainer" class="trades-grid">
+            <!-- Filled by JS -->
+        </div>
+
+        <!-- Heatmap & History -->
+        <div class="dashboard">
+            <div class="heatmap glass">
+                <h3>🔥 Market Heatmap</h3>
+                <div id="heatmapGrid"></div>
+            </div>
+            <div class="history glass">
+                <h3>📜 Trade History</h3>
+                <div id="historyList"></div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
