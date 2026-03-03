@@ -27,8 +27,7 @@ FOREX_SYMBOLS = [
     'AUD/JPY', 'EUR/AUD', 'GBP/AUD', 'USD/TRY', 'USD/ZAR'
 ]
 
-# API Keys from environment
-NEWS_API_KEY = os.environ.get('NEWS_API_KEY', '')
+# API Keys from environment (news key removed)
 CRYPTO_API_KEY = os.environ.get('CRYPTO_API_KEY', '')   # e.g., CoinMarketCap
 FOREX_API_KEY = os.environ.get('FOREX_API_KEY', '')     # e.g., TwelveData
 ALPHA_VANTAGE_KEY = os.environ.get('ALPHA_VANTAGE_KEY', '')
@@ -67,7 +66,6 @@ def get_crypto_prices():
 
 def get_forex_prices():
     """Fetch forex prices (fallback to mock)."""
-    # Use Alpha Vantage or TwelveData if keys available
     if ALPHA_VANTAGE_KEY:
         prices = {}
         for sym in FOREX_SYMBOLS:
@@ -215,46 +213,6 @@ def calculate_indicators(ohlc):
         'current_price': closes[-1]
     }
 
-def assess_news(asset):
-    """Check news sentiment. Return (impact, sentiment, headline)."""
-    if not NEWS_API_KEY:
-        return ('LOW', 'NEUTRAL', 'No news API key')
-    
-    # Extract keyword from asset (e.g., 'BTC' from 'BTC/USD')
-    keyword = asset.split('/')[0]
-    url = 'https://newsapi.org/v2/everything'
-    params = {
-        'q': keyword,
-        'apiKey': NEWS_API_KEY,
-        'pageSize': 5,
-        'sortBy': 'publishedAt'
-    }
-    try:
-        resp = requests.get(url, params=params, timeout=5)
-        data = resp.json()
-        if data['status'] == 'ok' and data['articles']:
-            headlines = [a['title'] for a in data['articles']]
-            # Simple sentiment: look for bullish/bearish words
-            bullish = ['surge', 'gain', 'bull', 'buy', 'positive']
-            bearish = ['drop', 'fall', 'bear', 'sell', 'negative', 'hack', 'ban']
-            score = 0
-            for h in headlines:
-                if any(w in h.lower() for w in bullish):
-                    score += 1
-                if any(w in h.lower() for w in bearish):
-                    score -= 1
-            if score > 0:
-                sentiment = 'BULLISH'
-            elif score < 0:
-                sentiment = 'BEARISH'
-            else:
-                sentiment = 'NEUTRAL'
-            impact = 'HIGH' if abs(score) >= 2 else 'MEDIUM'
-            return (impact, sentiment, headlines[0][:100])
-    except:
-        pass
-    return ('LOW', 'NEUTRAL', 'No recent news')
-
 def calculate_dynamic_tp_sl(entry, direction, atr, swing_low, swing_high, duration_minutes, current_price):
     """
     Compute TP and SL with breathing room (1.5*ATR buffer) and duration adjustment.
@@ -299,31 +257,24 @@ def calculate_leverage(atr_percent):
     else:
         return 2
 
-def probability_score(indicators, news_sentiment, news_impact):
-    """Compute a score 0-100 based on confluence."""
+def probability_score(indicators):
+    """Compute a score 0-100 based on confluence (news removed)."""
     score = 50  # base
     # Trend alignment
     if indicators['trend'] == 'UPTREND':
-        score += 10
+        score += 15
     elif indicators['trend'] == 'DOWNTREND':
-        score += 10
+        score += 15
     # RSI (30-70)
     if 30 < indicators['rsi'] < 70:
-        score += 5
+        score += 10
     # MACD
     if indicators['macd'] > indicators['signal']:
-        score += 5
-    # Bollinger position (if price near lower band for long, near upper for short)
-    # Simplified: assume we will decide direction later; for now just add if bands are wide
-    if indicators['bollinger_upper'] - indicators['bollinger_lower'] > indicators['current_price'] * 0.05:
-        score += 5
-    # News
-    if news_sentiment == 'BULLISH' or news_sentiment == 'BEARISH':
         score += 10
-    if news_impact == 'HIGH':
-        score += 5
-    elif news_impact == 'MEDIUM':
-        score += 2
+    # Bollinger position (if price near lower band for long, near upper for short)
+    # Simplified: add if bands are wide
+    if indicators['bollinger_upper'] - indicators['bollinger_lower'] > indicators['current_price'] * 0.05:
+        score += 10
     # Cap
     return min(100, score)
 
@@ -346,11 +297,6 @@ def generate_trade(asset, asset_type, duration_minutes, used_assets):
     indicators = calculate_indicators(ohlc)
     atr = calculate_atr(ohlc)
     current_price = indicators['current_price']
-    
-    # News check
-    news_impact, news_sentiment, headline = assess_news(asset)
-    if news_impact == 'HIGH' and 'red folder' in headline.lower():  # simulate high impact news filter
-        return None
     
     # Determine trade direction based on trend and indicators
     direction = None
@@ -378,8 +324,8 @@ def generate_trade(asset, asset_type, duration_minutes, used_assets):
     atr_percent = (atr / current_price) * 100 if current_price else 1.0
     leverage = calculate_leverage(atr_percent)
     
-    # Probability score
-    prob = probability_score(indicators, news_sentiment, news_impact)
+    # Probability score (news removed)
+    prob = probability_score(indicators)
     
     # Build trade object
     trade = {
@@ -393,7 +339,6 @@ def generate_trade(asset, asset_type, duration_minutes, used_assets):
         'duration_minutes': duration_minutes,
         'probability': prob,
         'timestamp': datetime.now().isoformat(),
-        'news': headline,
         'logic': f"{indicators['trend']} trend, RSI {indicators['rsi']:.1f}, ATR {atr:.2f}, SL placed with 1.5xATR buffer."
     }
     return trade
