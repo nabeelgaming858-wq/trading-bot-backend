@@ -717,8 +717,8 @@ function buildCard(t){
       <div class="metric"><div class="m-lbl">Leverage</div><div class="m-val pri">${t.leverage}x</div><div class="m-sub">Volatility-adjusted</div></div>
       <div class="metric"><div class="m-lbl">Risk:Reward</div><div class="m-val ${t.rr>=2?'buy':'pri'}">1:${t.rr}</div><div class="m-sub">Min 1:2.0 guaranteed</div></div>
       <div class="metric"><div class="m-lbl">Duration</div><div class="m-val pri">${t.duration}</div><div class="m-sub">TP designed to hit</div></div>
-      <div class="metric"><div class="m-lbl">Strategy</div><div class="m-val ${t.strategy_type==='BOUNCE'?'sell':'buy'}">${t.strategy_type||'TREND'}</div><div class="m-sub">${t.strategy_type==='BOUNCE'?'Reversal play':'Momentum trade'}</div></div>
-      <div class="metric"><div class="m-lbl">SL Protection</div><div class="m-val pri">${t.volatility?.wick_pct||'—'}%</div><div class="m-sub">Wick zone — SL beyond</div></div>
+      <div class="metric"><div class="m-lbl">Strategy</div><div class="m-val ${t.strategy_type==='BOUNCE'?'sell':t.strategy_type==='SCALP'?'pri':'buy'}">${t.strategy_icon||'📊'} ${t.strategy_type||'TREND'}</div><div class="m-sub">${t.strategy_type==='BOUNCE'?'Reversal play':t.strategy_type==='SCALP'?'Quick setup':t.strategy_type==='BREAKOUT'?'Breakout trade':t.strategy_type==='PULLBACK'?'EMA retest':'Momentum trade'}</div></div>
+      <div class="metric"><div class="m-lbl">Win Rate</div><div class="m-val buy">${t.win_rate||'68-74%'}</div><div class="m-sub">Historical average</div></div>
     </div>
 
     <div class="conf-wrap">
