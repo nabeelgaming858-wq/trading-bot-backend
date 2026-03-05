@@ -450,11 +450,11 @@ def classify_strategy(ind, change24h, sr, price, session):
 # ════════════════════════════════════════════════════════════════════════════
 TRADE_TYPE_CFG = {
     "scalp": {
-        "dur_min_base": 15, "dur_max": 90,
-        "tp_factor":    0.38,   # 38% of expected → ~80% hit rate
-        "sl_factor":    0.45,   # tighter SL for scalp (structure-based)
+        "dur_min_base": 10,  "dur_max": 90,
+        "tp_factor":    0.42,   # 42% of expected → ~78% hit rate
+        "sl_factor":    0.20,   # very tight SL floor for scalp (quick exit)
         "rr_target":    1.8,
-        "description":  "Quick 15–90 min setup",
+        "description":  "Quick 10–90 min setup",
     },
     "intraday": {
         "dur_min_base": 120, "dur_max": 480,
@@ -489,58 +489,62 @@ def get_tt_cfg(trade_type):
 # ════════════════════════════════════════════════════════════════════════════
 def auto_dur(sym, strategy, change24h, trade_type, req_dur):
     cfg, tt = get_tt_cfg(trade_type)
+    lo      = cfg["dur_min_base"]
+    hi      = cfg["dur_max"]
     p       = P(sym)
     hv      = p["hv"]
     sl_m    = p["sl_min"] * cfg["sl_factor"]
     rr_t    = cfg["rr_target"]
     tf      = cfg["tp_factor"]
     dv      = abs(change24h)
-    sm      = 0.90   # conservative session assumption for planning
+    sm      = 0.90
 
-    # ── SCALP: very short, based purely on tier volatility ────────────────
+    # ── CUSTOM OVERRIDE: always respect req_dur, clamped to type range ───
+    if req_dur:
+        return max(lo, min(hi, req_dur))
+
+    # ── SCALP: always 10–90 min, never extended ───────────────────────────
     if tt == "scalp":
         tier = p["tier"]
-        # Higher volatility assets → shorter scalp (move happens faster)
-        base = {"ROCKET":15,"FAST":20,"MEDIUM":30,"SLOW":45}.get(tier,30)
-        if dv > 6:   base = max(10, int(base*0.60))
-        elif dv > 3: base = max(12, int(base*0.75))
-        elif dv < 1: base = min(90, int(base*1.50))
-        return max(10, min(90, base))
+        base = {"ROCKET":12,"FAST":15,"MEDIUM":20,"SLOW":30}.get(tier, 20)
+        if dv > 8:   base = max(10, int(base * 0.55))
+        elif dv > 5: base = max(10, int(base * 0.70))
+        elif dv > 3: base = max(10, int(base * 0.80))
+        elif dv < 1: base = min(hi,  int(base * 1.60))
+        elif dv < 2: base = min(hi,  int(base * 1.25))
+        # Strategy hint: BREAKOUT / BOUNCE hit faster
+        if strategy in ("BREAKOUT","BOUNCE"): base = max(10, int(base*0.75))
+        return max(lo, min(hi, base))    # HARD clamp to [10, 90]
 
     # ── INTRADAY / SWING: calculate minimum duration for RR to work ───────
-    # We need: hv × √(hrs) × sm × tf  ≥  sl_m × rr_t
+    # Need: hv × √(hrs) × sm × tf  ≥  sl_m × rr_t
     # → hrs ≥ (sl_m × rr_t / (hv × sm × tf))²
-    min_hrs  = (sl_m * rr_t / (hv * sm * tf)) ** 2
-    min_min  = int(min_hrs * 60) + 15   # 15min buffer
+    if sl_m > 0 and hv > 0 and tf > 0 and sm > 0:
+        min_hrs = (sl_m * rr_t / (hv * sm * tf)) ** 2
+        min_min = int(min_hrs * 60) + 15
+    else:
+        min_min = lo
 
-    lo = cfg["dur_min_base"]
-    hi = cfg["dur_max"]
+    # Volatility adjustment — high vol = faster market = shorter duration
+    if dv > 8:    min_min = int(min_min * 0.42)
+    elif dv > 6:  min_min = int(min_min * 0.52)
+    elif dv > 4:  min_min = int(min_min * 0.65)
+    elif dv > 2:  min_min = int(min_min * 0.80)
+    elif dv < 0.8:min_min = int(min_min * 1.40)
+    elif dv < 1.5:min_min = int(min_min * 1.18)
 
-    # Volatility adjustments — high vol day = market moves faster = shorter dur
-    if dv > 8:    min_min = int(min_min * 0.45)
-    elif dv > 6:  min_min = int(min_min * 0.55)
-    elif dv > 4:  min_min = int(min_min * 0.68)
-    elif dv > 2:  min_min = int(min_min * 0.82)
-    elif dv < 0.8:min_min = int(min_min * 1.35)
-    elif dv < 1.5:min_min = int(min_min * 1.15)
+    # Strategy hint
+    if strategy == "BOUNCE":    min_min = int(min_min * 0.75)
+    elif strategy == "BREAKOUT":min_min = int(min_min * 0.70)
+    elif strategy == "PULLBACK":min_min = int(min_min * 0.88)
 
-    # Strategy adjustments
-    if strategy == "BOUNCE":    min_min = int(min_min * 0.80)  # reversals fast
-    elif strategy == "BREAKOUT":min_min = int(min_min * 0.75)  # breakouts fast
-    elif strategy == "PULLBACK":min_min = int(min_min * 0.90)
-
-    # Snap to allowed range
+    # Clamp to type range
     dur = max(lo, min(hi, min_min))
 
-    # For swing: prefer round day boundaries (1d, 2d, 3d …)
+    # Swing: snap to whole day boundaries
     if tt == "swing":
         days = max(1, round(dur / 1440))
-        dur  = days * 1440
-        dur  = max(lo, min(hi, dur))
-
-    # User override
-    if req_dur:
-        dur = max(lo, min(hi, req_dur))
+        dur  = max(lo, min(hi, days * 1440))
 
     return dur
 
@@ -567,12 +571,13 @@ def calc_tpsl(sym, market, strategy, direction, price, change24h, dur_min,
     cfg, tt = get_tt_cfg(trade_type)
     tf     = cfg["tp_factor"]
     rr_t   = cfg["rr_target"]
+    hi_dur = cfg["dur_max"]   # HARD ceiling for this trade type
 
-    # SL floor per trade type (swing trades need wider SL for noise)
+    # SL floor per trade type
     if tt == "scalp":
-        sl_floor = sl_m * 0.45          # tighter for scalp
+        sl_floor = sl_m * 0.20          # very tight for scalp
     elif tt == "swing":
-        sl_floor = sl_m * 1.8           # wider for swing (multi-day noise)
+        sl_floor = sl_m * 1.8           # wider for swing multi-day noise
     else:
         sl_floor = sl_m                 # normal for intraday
 
@@ -588,47 +593,49 @@ def calc_tpsl(sym, market, strategy, direction, price, change24h, dur_min,
     sl_pct = max(sl_floor, tp_pct / rr_t)
     rr     = tp_pct / sl_pct if sl_pct > 0 else rr_t
 
-    # If RR still < 1.5 after duration was selected, extend duration
+    # Only extend duration for intraday/swing — NEVER for scalp
     if rr < 1.5 and tt != "scalp":
         needed_hrs = (sl_pct * rr_t / (hv_adj * sm * tf)) ** 2
         new_dur    = int(needed_hrs * 60) + 15
-        new_dur    = max(dur_min, min(cfg["dur_max"], new_dur))
+        new_dur    = max(dur_min, min(hi_dur, new_dur))  # hard cap!
         expected   = hv_adj * math.sqrt(new_dur/60.0) * sm
         tp_pct     = expected * tf
         sl_pct     = max(sl_floor, tp_pct / rr_t)
         rr         = tp_pct / sl_pct if sl_pct > 0 else rr_t
         dur_min    = new_dur
 
-    # Quality bonus — high quality setup gets slightly bigger TP
-    # (still within reachable range)
-    tp_cap = expected * (0.45 if tt=="scalp" else 0.60 if tt=="swing" else 0.55)
+    # For scalp: NEVER extend, just accept lower RR if needed
+    if tt == "scalp":
+        dur_min = max(cfg["dur_min_base"], min(hi_dur, dur_min))  # hard cap 90min
+
+    # Quality bonus
+    tp_cap = expected * (0.48 if tt=="scalp" else 0.62 if tt=="swing" else 0.56)
     if quality >= 90:   tp_pct = min(tp_pct * 1.12, tp_cap)
     elif quality >= 84: tp_pct = min(tp_pct * 1.07, tp_cap)
     elif quality >= 78: tp_pct = min(tp_pct * 1.03, tp_cap)
 
-    # ADX bonus — very strong trend = push TP a bit further
+    # ADX bonus
     if adx > 45 and tt != "scalp":
         tp_pct = min(tp_pct * 1.08, tp_cap)
     elif adx > 35:
         tp_pct = min(tp_pct * 1.04, tp_cap)
 
-    # Recompute SL and RR after bonuses
+    # Recompute
     sl_pct = max(sl_floor, tp_pct / rr_t)
     rr     = round(tp_pct / sl_pct, 2) if sl_pct > 0 else rr_t
 
-    # Absolute caps per market
+    # Absolute caps per market + trade type
     if market == "forex":
-        if tt == "scalp":    tp_pct = min(tp_pct, 0.25); sl_pct = min(sl_pct, 0.15)
-        elif tt == "intraday":tp_pct = min(tp_pct, 1.20); sl_pct = min(sl_pct, 0.70)
-        else:                tp_pct = min(tp_pct, 3.00); sl_pct = min(sl_pct, 1.50)
-    else:  # crypto
-        if tt == "scalp":    tp_pct = min(tp_pct, 3.0)
-        elif tt == "intraday":tp_pct = min(tp_pct, 15.0)
-        else:                tp_pct = min(tp_pct, 40.0)  # swing can be big!
+        if tt == "scalp":     tp_pct=min(tp_pct,0.30); sl_pct=min(sl_pct,0.18)
+        elif tt == "intraday":tp_pct=min(tp_pct,1.50); sl_pct=min(sl_pct,0.80)
+        else:                 tp_pct=min(tp_pct,4.00); sl_pct=min(sl_pct,2.00)
+    else:
+        if tt == "scalp":     tp_pct=min(tp_pct,4.0)
+        elif tt == "intraday":tp_pct=min(tp_pct,18.0)
+        else:                 tp_pct=min(tp_pct,45.0)
 
     rr = round(tp_pct / sl_pct, 2) if sl_pct > 0 else rr_t
 
-    # Price levels
     if direction == "LONG":
         tp = round(price * (1 + tp_pct/100), 8)
         sl = round(price * (1 - sl_pct/100), 8)
@@ -641,7 +648,7 @@ def calc_tpsl(sym, market, strategy, direction, price, change24h, dur_min,
         "tp_pct":round(tp_pct,3), "sl_pct":round(sl_pct,3),
         "rr":rr, "expected_pct":round(expected,3),
         "tp_vs_exp":round(tp_pct/expected*100,1) if expected>0 else 0,
-        "adj_dur":dur_min,
+        "adj_dur":dur_min,     # ALWAYS within trade type bounds
     }
 
 
@@ -676,13 +683,20 @@ def fmt_dur(m):
         return f"{m}m"
     except: return "—"
 
-def timeframe(d):
-    if d<=15:   return "1m / 3m"
-    if d<=60:   return "5m / 15m"
-    if d<=240:  return "15m / 1H"
-    if d<=480:  return "1H / 4H"
-    if d<=1440: return "4H / 1D"
-    return "1D / 1W"
+def timeframe(d, trade_type="intraday"):
+    """Correct chart timeframe for trade duration and type."""
+    _, tt = get_tt_cfg(trade_type)
+    if tt == "scalp":
+        if d <= 15:  return "1m / 3m"
+        if d <= 30:  return "1m / 5m"
+        return           "5m / 15m"
+    elif tt == "swing":
+        if d <= 2880: return "4H / 1D"
+        return            "1D / 1W"
+    else:  # intraday
+        if d <= 60:  return "5m / 15m"
+        if d <= 180: return "15m / 1H"
+        return           "1H / 4H"
 
 def quality_label(c):
     if c>=91: return "A+ PREMIUM ⭐"
@@ -718,10 +732,23 @@ def build_trade(asset, market, trade_type, req_dur, session, seed):
         if result is None: return None
         strategy, direction, quality, signals = result
 
+        # ── If user selected SCALP, override strategy to SCALP ────────────
+        # Scalp = quick in/out regardless of what the indicator strategy says
+        _, tt = get_tt_cfg(trade_type)
+        if tt == "scalp" and strategy not in ("SCALP","BOUNCE","BREAKOUT"):
+            # Convert any trending strategy to SCALP using same direction
+            strategy = "SCALP"
+            signals  = [
+                f"⚡ SCALP: Quick {direction} setup — {abs(change24h):.1f}% momentum",
+                f"RSI {ind['rsi']:.0f} — Short-term {'oversold' if direction=='LONG' else 'overbought'}",
+                f"MACD {'positive ▲' if ind['macd']>0 else 'negative ▼'} — direction confirmed",
+                f"Session {session} — Active market, quick target",
+            ]
+
         dur  = auto_dur(asset, strategy, change24h, trade_type, req_dur)
         tpsl = calc_tpsl(asset, market, strategy, direction, price, change24h,
                          dur, ind["adx"], session, quality, trade_type)
-        dur  = tpsl["adj_dur"]  # duration may have been extended
+        dur  = tpsl["adj_dur"]  # still bounded by trade type max
         lev  = get_leverage(market, tier, dv, ind["adx"], dur, strategy)
 
         close_dt   = datetime.utcnow()+timedelta(minutes=dur)
@@ -784,7 +811,7 @@ def build_trade(asset, market, trade_type, req_dur, session, seed):
             "tp":tpsl["tp"],"sl":tpsl["sl"],
             "tp_pct":tpsl["tp_pct"],"sl_pct":tpsl["sl_pct"],"rr":tpsl["rr"],
             "expected_move":tpsl["expected_pct"],"tp_vs_expected":tpsl["tp_vs_exp"],
-            "leverage":lev,"timeframe":timeframe(dur),
+            "leverage":lev,"timeframe":timeframe(dur, trade_type),
             "duration":fmt_dur(dur),"duration_min":dur,"close_time":close_time,
             "session":session,"quality":ql,"tier":tier,
             "volatility":{"level":vl,"speed":vs,"change_pct":round(dv,2),
@@ -877,7 +904,7 @@ def generate_trade():
                     "tp":tpsl["tp"],"sl":tpsl["sl"],"tp_pct":tpsl["tp_pct"],
                     "sl_pct":tpsl["sl_pct"],"rr":tpsl["rr"],
                     "expected_move":tpsl["expected_pct"],"tp_vs_expected":tpsl["tp_vs_exp"],
-                    "leverage":lev,"timeframe":timeframe(dur),
+                    "leverage":lev,"timeframe":timeframe(dur, trade_type),
                     "duration":fmt_dur(dur),"duration_min":dur,"close_time":close_time,
                     "session":session,"quality":"B  SOLID","tier":tier,
                     "volatility":{"level":"NORMAL","speed":"MODERATE",
